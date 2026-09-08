@@ -6,6 +6,7 @@ import {
   writePromptFile,
   killOnAbort,
   parseJsonlEvents,
+  SubprocessRunner,
 } from "../src/runner/subprocess.js";
 
 describe("resolvePiInvocation", () => {
@@ -104,5 +105,96 @@ describe("parseJsonlEvents", () => {
     const collected = [...parseJsonlEvents(stream)];
     expect(collected).toHaveLength(1);
     expect(collected[0]).toEqual({ type: "ok" });
+  });
+});
+
+describe("SubprocessRunner.buildArgs (CLI flag composition)", () => {
+  const noop = () => ({} as never);
+  const baseAgent = {
+    name: "scout",
+    description: "",
+    systemPrompt: "",
+    source: "bundled" as const,
+    filePath: "",
+  };
+
+  it("always starts with --mode json -p --no-session; Task line comes via buildSuffix", () => {
+    const runner = new SubprocessRunner({ spawnFn: noop });
+    const args = runner.buildArgs(
+      { agent: baseAgent, task: "find auth", cwd: "/tmp" },
+      {},
+    );
+    expect(args.slice(0, 4)).toEqual(["--mode", "json", "-p", "--no-session"]);
+    expect(args[args.length - 1]).toBe("--no-session");
+    // Full ordering when a system prompt is present:
+    // prefix + [--append-system-prompt <tmp>] + [Task: ...]
+    const suffix = runner.buildSuffix("You are X.", "find auth");
+    expect(suffix[suffix.length - 1]).toBe("Task: find auth");
+  });
+
+  it("appends --model when agent.model is set", () => {
+    const runner = new SubprocessRunner({ spawnFn: noop });
+    const args = runner.buildArgs(
+      { agent: { ...baseAgent, model: "claude-sonnet-4-5" }, task: "x", cwd: "/tmp" },
+      {},
+    );
+    const idx = args.indexOf("--model");
+    expect(idx).toBeGreaterThan(-1);
+    expect(args[idx + 1]).toBe("claude-sonnet-4-5");
+  });
+
+  it("falls back to parentModel when agent.model unset", () => {
+    const runner = new SubprocessRunner({ spawnFn: noop });
+    const args = runner.buildArgs(
+      { agent: baseAgent, task: "x", cwd: "/tmp" },
+      { parentModel: "anthropic/claude-haiku-4-5" },
+    );
+    const idx = args.indexOf("--model");
+    expect(args[idx + 1]).toBe("anthropic/claude-haiku-4-5");
+  });
+
+  it("appends --thinking only when agent.model unset AND parentThinkingLevel provided", () => {
+    const runner = new SubprocessRunner({ spawnFn: noop });
+    const withInherit = runner.buildArgs(
+      { agent: baseAgent, task: "x", cwd: "/tmp" },
+      { parentThinkingLevel: "low" },
+    );
+    const idx = withInherit.indexOf("--thinking");
+    expect(idx).toBeGreaterThan(-1);
+    expect(withInherit[idx + 1]).toBe("low");
+
+    // agent.model set → thinking NOT inherited
+    const withModel = runner.buildArgs(
+      { agent: { ...baseAgent, model: "claude-sonnet-4-5" }, task: "x", cwd: "/tmp" },
+      { parentThinkingLevel: "low" },
+    );
+    expect(withModel).not.toContain("--thinking");
+  });
+
+  it("appends --tools comma-joined only when agent.tools present", () => {
+    const runner = new SubprocessRunner({ spawnFn: noop });
+    const withTools = runner.buildArgs(
+      { agent: { ...baseAgent, tools: ["read", "bash"] }, task: "x", cwd: "/tmp" },
+      {},
+    );
+    const idx = withTools.indexOf("--tools");
+    expect(withTools[idx + 1]).toBe("read,bash");
+
+    const withoutTools = runner.buildArgs(
+      { agent: baseAgent, task: "x", cwd: "/tmp" },
+      {},
+    );
+    expect(withoutTools).not.toContain("--tools");
+  });
+
+  it("buildSuffix emits --append-system-prompt sentinel + Task line only when prompt non-empty", () => {
+    const runner = new SubprocessRunner({ spawnFn: noop });
+    expect(runner.buildSuffix("You are X.", "do it")).toEqual([
+      "--append-system-prompt",
+      "<tempFile>",
+      "Task: do it",
+    ]);
+    expect(runner.buildSuffix("", "do it")).toEqual(["Task: do it"]);
+    expect(runner.buildSuffix("   ", "do it")).toEqual(["Task: do it"]);
   });
 });
