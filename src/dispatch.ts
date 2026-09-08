@@ -72,12 +72,15 @@ export function selectRunner(): AgentRunner {
 
 /**
  * Mode orchestrator. `agents` is the resolved discovery list (from index.ts),
- * already filtered to the agents this dispatch needs.
+ * already filtered to the agents this dispatch needs. `runnerOverride` lets
+ * tests inject a SubprocessRunner with a fake spawn (ESM bindings can't be
+ * monkey-patched).
  */
 export async function execute(
   params: SubagentParams,
   ctx: DispatchContext,
   agents: AgentConfig[],
+  runnerOverride?: AgentRunner,
 ): Promise<ToolResultLike> {
   const mode = detectMode(params);
   if (mode === "invalid") return buildInvalidParamsError(agents);
@@ -91,7 +94,7 @@ export async function execute(
     };
   }
 
-  const runner = selectRunner();
+  const runner = runnerOverride ?? selectRunner();
   const lookup = (name: string): AgentConfig =>
     agents.find((a) => a.name === name) ?? {
       name,
