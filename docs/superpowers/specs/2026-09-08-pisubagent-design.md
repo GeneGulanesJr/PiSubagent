@@ -1,6 +1,6 @@
 # PiSubagent Design Spec
 
-**Status:** Draft — pending user review
+**Status:** Ready for approval — all questions resolved
 **Date:** 2026-09-08
 **Author:** Pi (superpowers:brainstorming)
 **Skill chain:** triggered by absence of functional sub-agent dispatch in `subagent-driven-development/SKILL.md`
@@ -10,22 +10,38 @@
 | Q | Decision | Reasoning |
 |---|---|---|
 | Q1 — Architecture | **Subprocess backend for v1**, swappable via `AgentRunner` interface | Lowest time-to-working; preserves upstream-proven path; in-process backend is a v2 swap inside one interface, not a rewrite. |
-| Q2 — Skill integration | **Replace `subagent-driven-development/SKILL.md` in place**; keep skill name | `writing-plans` hardcodes the skill name; merged skill already supported "Direct mode" fallback for no-subagent environments; v1 assumes Pi is primary harness. |
+| Q2 — Skill integration | **Fork to new skill `pi-subagent-driven-development`**; keep existing merged `subagent-driven-development` untouched (user actively uses it in other harnesses) | User confirmed they use the merged skill across Claude Code/Codex; in-place replace would break that path. New skill is Pi-specific. |
+| Q3 — Skill rewrite timing | **Phase 4** (after PiSubagent is built and verified) | Verification gate earlier; once Phase 5 ships, skill guidance matches tool from day one of usage. |
+| Q4 — Default agent roster | **Four ships-with agents** (`scout` / `planner` / `reviewer` / `worker`) from upstream example | Start with proven defaults; iterate later. |
+| Q5 — License | **MIT** | User preference. |
+| Q6 — `pi install` asset behavior | **Verified** (see Q6 Verification below) — prompts + skills auto-load via package conventions; agents must be extension-discovered | Per `docs/packages.md` and `docs/prompt-templates.md` in the installed `@earendil-works/pi-coding-agent` package. |
 | Repo location | **`~/Documents/GulanesKorp/PiSubagent/`** | Matches user's house style (PiArgus, PiNyx, PiStats, PiGen, PiSkills, PiMemoryExtension all under `GulanesKorp/`). |
 | Distribution | **npm pi-package + GitHub + `git:` install in `settings.json`**, NOT local copy | Memory #1328 explicitly switched the user's `memory-layer` from local to git-package; memory #592 explicitly deleted a local duplicate after promoting PiArgus. |
 | Upstream handling | **Fork, do not symlink** upstream example | Risk of upstream drift; ensures v1 hardening deltas stick; aligns with "PiArgus is canonical (replace-in-place of old local browser/)" pattern from memory #592. |
-| Cross-harness cost (Q2 trade-off) | If Claude Code/Codex actively consumes the merged skill today, **forking becomes Q2-correct** instead. Open question for spec review (below). | |
 | v2 In-Process backend | Interface-only stub in v1; revisit after Aurex SDK-pattern verification | Cannot lean on unverified memory; `AgentRunner` swap is the refactor boundary. |
+
+## Q6 Verification — `pi install` Asset Behavior
+
+Verified by reading `docs/packages.md` and `docs/prompt-templates.md` in the installed `@earendil-works/pi-coding-agent` package:
+
+| Resource | Auto-loaded by Pi from package? | PiSubagent handling |
+|---|---|---|
+| Extensions (.ts/.js) | Yes — via `pi.extensions` manifest or `extensions/` convention | Register `src/index.ts` via `pi.extensions: ["./src/index.ts"]` |
+| Skills (SKILL.md) | Yes — via `pi.skills` manifest or `skills/` convention | Ship new `pi-subagent-driven-development/SKILL.md` under `skills/` convention directory; auto-loaded post-install |
+| Prompt templates (*.md) | Yes — via `pi.prompts` manifest or `prompts/` convention | Ship `prompts/{implement,scout-and-plan,implement-and-review}.md`; auto-loaded post-install |
+| Themes (.json) | Yes — via `pi.themes` manifest or `themes/` convention | Out of scope for PiSubagent |
+| **Agents (*.md)** | **NO** — agents are NOT a first-class Pi resource. `~/.pi/agent/agents/*.md` is a fixed path the extension itself must discover | `agents.ts` discovers from BOTH the package's bundled `agents/*.md` AND `~/.pi/agent/agents/*.md` (user-level override). No install step, no postinstall script needed. |
+
+**Implications for the migration plan:**
+- Phases 2-3 ship the package with `agents/`, `prompts/`, `skills/` directories as convention directories.
+- Phase 5 install is `git:github.com/genegulanesjr/PiSubagent` in settings.json + `pi install`. No manual symlink steps. The user can override bundled agents by dropping same-name files in `~/.pi/agent/agents/`.
+- The existing merged `subagent-driven-development/SKILL.md` stays untouched (per Q2 fork decision). |
 
 ## Open Questions for Spec Reviewer
 
-Flagged for the user before spec approval:
+All five original reviewer questions have been resolved (Q2–Q5 by user direction, Q6 by verification). The remaining open question is:
 
-1. **Q2 cross-harness check**: Do you actively run `~/.pi/agent/skills/subagent-driven-development/SKILL.md` inside Claude Code or Codex today? If yes, in-place replacement breaks that path. If no, replacement is the cleaner default.
-2. **Skill rewrite timing**: The current 5-phase plan rewrites the skill at Phase 4 (after PiSubagent is built and verified). Alternative: rewrite first so the skill's updated guidance matches the new tool surface as soon as you start using PiSubagent. Default keeps the verification gate earlier.
-3. **Default agent roster**: The four sample agents (scout / planner / reviewer / worker) are inherited from the upstream example. Are there domain-specific defaults you'd want instead — e.g., a `repo-reviewer` for this GulanesKorp codebase, or a `design-implementer` aware of your DESIGN.md conventions?
-4. **License**: PiArgus's LICENSE was not inspected — default to MIT unless there's a reason for Apache-2.0 (matches PiNyx style) or to match PiArgus's license exactly.
-5. **`pi install` caveat**: If `git:github.com/genegulanesjr/PiSubagent` does not auto-install the markdown assets (agents/, prompts/) into `~/.pi/agent/agents/` and `~/.pi/agent/prompts/`, the migration plan needs a manual symlink step (per the upstream example's README). I haven't verified Pi's package installer asset behavior yet. Phase 5 should confirm and add a fallback step if needed.
+- **v2 In-Process backend** — implementation deferred until Aurex SDK-pattern precedent is verified. ADR candidate once the precedent is documented.
 
 ## Goal
 
@@ -111,6 +127,9 @@ PiSubagent/
 │   ├── implement.md
 │   ├── scout-and-plan.md
 │   └── implement-and-review.md
+├── skills/                     # Ships-with skill (Pi-shaped; fork of merged subagent-driven-development)
+│   └── pi-subagent-driven-development/
+│       └── SKILL.md
 ├── tests/
 │   ├── agents.test.ts          # frontmatter parsing, scope merging
 │   ├── dispatch.test.ts        # modeCount validation, chain flow
@@ -319,22 +338,72 @@ Constants:
 
 ## Skill Integration
 
-Replace the merged `~/.pi/agent/skills/subagent-driven-development/SKILL.md` body in place. Keep the skill name `subagent-driven-development` (preserves `writing-plans`'s hardcoded reference). Update `description:` frontmatter to:
+Per Q2 fork decision: **add a new skill `pi-subagent-driven-development`** alongside the existing merged `subagent-driven-development/SKILL.md`. The merged skill stays untouched so the user can keep using it in Claude Code/Codex.
 
-> "Execute implementation plans with subagents via Pi's subagent tool. Three modes: Sequential (subagent per task with two-stage review), Parallel (concurrent independent agents), Direct (task-by-task without subagents when PiSubagent is unavailable)."
+**New skill location**: `skills/pi-subagent-driven-development/SKILL.md` in the package (auto-loaded by Pi post-install per Q6 verification).
 
-Rewrite prompt templates inside the skill:
-- Sequential-mode per-task dispatch: `subagent(agent: "worker", task: <task>)` instead of `Task(...)`
-- Parallel-mode dispatch: `subagent(tasks: [{agent:"...", task:"..."}, ...])`
-- Chain workflow: `subagent(chain: [{agent:"scout", task:"..."}, {agent:"planner", task: "...{previous}..."}])`
-- Model selection table: simplify to "least powerful model that can handle" since Pi inherits dispatch defaults when `model:` is omitted in agent frontmatter
+**`name:` frontmatter**: `pi-subagent-driven-development`
 
-Keep the **Direct mode** section verbatim (it's already Pi-friendly — talks to the parent, not agents).
+**`description:` frontmatter**:
+
+> "Execute implementation plans with subagents via Pi's `subagent` tool. Three modes: Sequential (subagent per task with two-stage review), Parallel (concurrent independent agents), Direct (task-by-task without subagents when PiSubagent is unavailable)."
+
+**Body sections**:
+
+1. **Direct mode** — keep verbatim from upstream merged skill (already Pi-friendly — talks to the parent, not agents).
+2. **Sequential mode** — replace `Task(...)` with `subagent(agent: "worker", task: <task>)`. Add note that the new skill does NOT have `writing-plans` hardcoded reference to it (only the merged `subagent-driven-development` does).
+3. **Parallel mode** — replace parallel `Task()` blocks with single `subagent(tasks: [{agent:"...", task:"..."}, ...])` calls.
+4. **Chain workflow** — replace sequential scout→planner→worker pattern with `subagent(chain: [{agent:"scout", task:"..."}, {agent:"planner", task: "...{previous}..."}, {agent:"worker", task: "...{previous}..."}])`.
+5. **Model selection table** — simplify to "least powerful model that can handle" since Pi inherits dispatch defaults (model + thinking level) when `model:` is omitted in agent frontmatter. Cross-reference the `agents/` markdown files for which model each agent defaults to.
+6. **Prompt templates** — link to the bundled `prompts/` directory (also auto-loaded per Q6 verification) for ready-made `/implement`, `/scout-and-plan`, `/implement-and-review` workflows.
+
+**Coexistence**: the new skill and the existing merged skill both load. The merged skill's `name:` (`subagent-driven-development`) is unchanged, so `writing-plans` keeps working without edits. The new skill is invoked by `/skill:pi-subagent-driven-development` or auto-loaded by description match.
 
 ## Distribution & Install
 
-1. Push `PiSubagent` repo to `genegulanesjr/PiSubagent` on GitHub.
-2. Register in `~/.pi/agent/settings.json`:
+Per Q6 verification, Pi's package installer auto-loads `extensions/`, `skills/`, `prompts/`, and `themes/` from packages. Agents are extension-discovered (NOT Pi-managed), so `agents/` ships as bundled-with-the-extension markdown files that the extension discovers at runtime.
+
+1. Push `PiSubagent` repo to `genegulanesjr/PiSubagent` on GitHub. License: MIT (Q5).
+2. `package.json` declares:
+   ```json
+   {
+     "name": "pisubagent",
+     "version": "0.1.0",
+     "description": "Pi subagent tool — isolated subprocess dispatch with three modes (single / parallel / chain). Bundled scout / planner / reviewer / worker agents.",
+     "type": "module",
+     "keywords": ["pi-package", "pi-extension", "subagent", "agent", "dispatch"],
+     "license": "MIT",
+     "files": [
+       "src/**/*",
+       "agents/**/*.md",
+       "prompts/**/*.md",
+       "skills/**/*",
+       "Dockerfile",
+       ".dockerignore",
+       "README.md",
+       "LICENSE"
+     ],
+     "scripts": {
+       "test": "vitest run",
+       "test:watch": "vitest",
+       "typecheck": "tsc --noEmit"
+     },
+     "peerDependencies": {
+       "@earendil-works/pi-coding-agent": "*",
+       "@sinclair/typebox": "*"
+     },
+     "devDependencies": {
+       "vitest": "^3.0.0",
+       "tsx": "^4.0.0",
+       "typescript": "^5.7.0"
+     },
+     "pi": {
+       "extensions": ["./src/index.ts"]
+     }
+   }
+   ```
+   `agents/`, `prompts/`, and `skills/` use convention-directory auto-discovery (no explicit `pi.agents` entry needed — agents are NOT a first-class Pi resource).
+3. Register in `~/.pi/agent/settings.json`:
    ```json
    {
      "packages": [
@@ -342,9 +411,13 @@ Keep the **Direct mode** section verbatim (it's already Pi-friendly — talks to
      ]
    }
    ```
-3. Run `pi install` (or `/reload` if settings.json was edited in-place).
-4. Verify `~/.pi/agent/agents/` now contains symlinks or copies of the four shipped agents; same for `~/.pi/agent/prompts/`.
-5. Test single mode: in any session, ask Pi to use the `subagent` tool with `agent: "scout"` and an obvious task. Verify result, exit, and token accounting.
+4. Run `pi install` (or `pi install git:github.com/genegulanesjr/PiSubagent` directly). `pi update --all` afterwards will reconcile to the latest pinned ref.
+5. Verify in a fresh Pi session:
+   - `/skill:pi-subagent-driven-development` lists the new skill (auto-loaded from `skills/`).
+   - `/implement <query>` lists the bundled prompt template (auto-loaded from `prompts/`).
+   - Calling `subagent` tool with `agent: "scout"` resolves a definition (auto-loaded from the extension's `agents.ts`).
+6. Smoke test: ask Pi to use the `subagent` tool with `agent: "scout"` and an obvious task. Verify result, exit, and token accounting.
+7. To override a bundled agent, drop a same-named `*.md` in `~/.pi/agent/agents/` — user-level wins per `discoverAgents()` precedence (per Q6).
 
 The upstream `examples/extensions/subagent/` is **NOT** symlinked. PiSubagent is a fork with v1 hardening and (later) v2 backend swap.
 
@@ -379,8 +452,8 @@ The five phases below are the BIG moves for the whole project. After the user ap
 1. **Spec (this document)** — pending user review and approval.
 2. **Scaffold** — `PiSubagent/` repo structure with empty stubs, vitest config, tsconfig, `package.json` pi-package shape, Dockerfile, README, LICENSE, .gitignore. Initial `git init` commit so subsequent phases have a baseline.
 3. **Port + adapt** — port `examples/extensions/subagent/{index.ts, agents.ts}` into `src/runner/subprocess.ts`, `src/agents.ts`, and `src/index.ts`. Apply the v1 hardening deltas in the Subprocess Backend table. Add `src/dispatch.ts`, `src/security.ts`, `src/render.ts`, `src/output.ts`, `src/runner/runner.ts`, `src/runner/in-process.ts`, `src/types.ts`. Write tests per Testing Strategy.
-4. **Skill rewrite** — fork the body of merged `subagent-driven-development/SKILL.md` into Pi-shaped prompt templates (single / parallel / chain syntax), keep the skill name, update `description:` frontmatter.
-5. **Install + verify** — push repo to `genegulanesjr/PiSubagent` on GitHub; register `git:github.com/genegulanesjr/PiSubagent` in `~/.pi/agent/settings.json`; run `pi install`; manual smoke (single, parallel, chain, Direct-mode fallback). Confirm `~/.pi/agent/agents/` and `~/.pi/agent/prompts/` are populated.
+4. **Skill rewrite** — author a new `skills/pi-subagent-driven-development/SKILL.md` with Pi-shaped prompt templates (single / parallel / chain syntax), Direct-mode carried over from the merged skill, and pointers to bundled `agents/` and `prompts/`. The existing merged `subagent-driven-development/SKILL.md` stays untouched (Q2 fork decision).
+5. **Install + verify** — push repo to `genegulanesjr/PiSubagent` on GitHub; register `git:github.com/genegulanesjr/PiSubagent` in `~/.pi/agent/settings.json`; run `pi install`. Per Q6, no manual symlink steps: prompts auto-load from `prompts/`, skill auto-loads from `skills/`, agents discovered by `agents.ts` from both bundled `agents/` and user-level `~/.pi/agent/agents/`. Manual smoke (single, parallel, chain, Direct-mode fallback of new skill, untouched merged skill still loads).
 
 Each phase ends with a write-up-to-the-user checkpoint. No phase begins until the prior phase's checkpoint is approved.
 
