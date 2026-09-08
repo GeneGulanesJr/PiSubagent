@@ -45,7 +45,35 @@ export async function writePromptFile(
   return { dir: tmpDir, filePath };
 }
 
-// Completed in Task 7 (killOnAbort, parseJsonlEvents) and Task 8 (SubprocessRunner).
-export const __placeholder_killOnAbort = null;
-export const __placeholder_parseJsonlEvents = null;
-export type { ChildProcess };
+/**
+ * Kill `proc` when `signal` aborts: SIGTERM immediately, SIGKILL after 5s grace.
+ * If the signal is already aborted, kills immediately.
+ */
+export function killOnAbort(proc: ChildProcess, signal: AbortSignal): void {
+  const killProc = () => {
+    proc.kill("SIGTERM");
+    setTimeout(() => {
+      if (!proc.killed) proc.kill("SIGKILL");
+    }, 5000);
+  };
+  if (signal.aborted) killProc();
+  else signal.addEventListener("abort", killProc, { once: true });
+}
+
+export type JsonlEvent = Record<string, unknown> & { type?: string };
+
+/**
+ * Parse newline-delimited JSON from a buffered stream chunk.
+ * Malformed and blank lines are skipped silently.
+ */
+export function* parseJsonlEvents(stream: string): IterableIterator<JsonlEvent> {
+  for (const line of stream.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      yield JSON.parse(trimmed) as JsonlEvent;
+    } catch {
+      // skip malformed lines
+    }
+  }
+}
