@@ -1,0 +1,37 @@
+{
+  "name": "pisubagent",
+  "version": "0.1.0",
+  "description": "Pi subagent tool — isolated subprocess dispatch with three modes (single / parallel / chain). Bundled scout / planner / reviewer / worker agents.",
+  "type": "module",
+  "keywords": ["pi-package", "pi-extension", "subagent", "agent", "dispatch"],
+  "license": "MIT",
+  "files": [
+    "src/**/*",
+    "agents/**/*.md",
+    "prompts/**/*.md",
+    "skills/**/*",
+    "Dockerfile",
+    ".dockerignore",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@sinclair/typebox": "*"
+  },
+  "devDependencies": {
+    "vitest": "^3.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.7.0",
+    "@types/node": "^20.0.0"
+  },
+  "pi": {
+    "extensions": ["./src/index.ts"]
+  }
+}
