@@ -1,6 +1,6 @@
 # PiSubagent Design Spec
 
-**Status:** Ready for approval — all questions resolved
+**Status:** Ready for approval — all questions resolved, review fixes applied
 **Date:** 2026-09-08
 **Author:** Pi (superpowers:brainstorming)
 **Skill chain:** triggered by absence of functional sub-agent dispatch in `subagent-driven-development/SKILL.md`
@@ -35,7 +35,7 @@ Verified by reading `docs/packages.md` and `docs/prompt-templates.md` in the ins
 **Implications for the migration plan:**
 - Phases 2-3 ship the package with `agents/`, `prompts/`, `skills/` directories as convention directories.
 - Phase 5 install is `git:github.com/genegulanesjr/PiSubagent` in settings.json + `pi install`. No manual symlink steps. The user can override bundled agents by dropping same-name files in `~/.pi/agent/agents/`.
-- The existing merged `subagent-driven-development/SKILL.md` stays untouched (per Q2 fork decision). |
+- The existing merged `subagent-driven-development/SKILL.md` stays untouched (per Q2 fork decision).
 
 ## Open Questions for Spec Reviewer
 
@@ -116,26 +116,27 @@ PiSubagent/
 │   ├── security.ts             # agentScope + project-agent confirmation flow
 │   ├── output.ts               # truncation, usage formatting, display-item extraction
 │   └── types.ts                # SubagentParams, SubagentDetails, SingleResult, etc
-
-(Prompt templates under `prompts/` are loaded by Pi's own prompt-template system from `~/.pi/agent/prompts/` post-install — no `src/prompts.ts` needed in the extension bundle.)
+│
 ├── agents/                     # Ships-with sample agents (markdown)
 │   ├── scout.md                # Haiku, read-only recon
 │   ├── planner.md              # Sonnet, read-only plan
 │   ├── reviewer.md             # Sonnet, read-only review
 │   └── worker.md               # Sonnet, full tool set
-├── prompts/                    # Ships-with workflow prompts
+├── prompts/                    # Ships-with workflow prompts (Pi auto-loads from package; see Q6 Verification)
 │   ├── implement.md
 │   ├── scout-and-plan.md
 │   └── implement-and-review.md
-├── skills/                     # Ships-with skill (Pi-shaped; fork of merged subagent-driven-development)
+├── skills/                     # Ships-with skill (Pi-shaped; fork of merged subagent-driven-development). Pi auto-loads via convention directory.
 │   └── pi-subagent-driven-development/
 │       └── SKILL.md
-├── tests/
-│   ├── agents.test.ts          # frontmatter parsing, scope merging
-│   ├── dispatch.test.ts        # modeCount validation, chain flow
+├── test/
+│   ├── agents.test.ts          # frontmatter parsing, scope merging, bundled-dir resolve
+│   ├── dispatch.test.ts        # modeCount validation, chain flow, abort semantics
 │   ├── runner-subprocess.test.ts  # spawn argv, JSON event parsing, abort signal
 │   ├── security.test.ts        # agentScope + project-agent confirmation
 │   ├── output.test.ts          # truncation caps, usage formatting
+│   ├── render.test.ts          # renderCall + renderResult for single/parallel/chain
+│   ├── index.test.ts           # tool registration (name, label, params shape, subagent tool exposed)
 │   └── fixtures/
 │       ├── minimal-agent.md
 │       └── minimal-extension-stub.ts
@@ -153,7 +154,7 @@ PiSubagent/
 - `agents.ts`: agent file parsing only (no I/O beyond discovery)
 - `runner/subprocess.ts`: all subprocess knowledge (CLI flags, JSON events, abort signal)
 - `runner/in-process.ts`: v2 placeholder; throws `Error("v2: see docs/superpowers/specs/2026-09-08-pisubagent-design.md §In-Process Backend")`
-- `render.ts`: pure functions over results; no I/O
+- `render.ts`: theme-injected rendering (no extension I/O; uses `@earendil-works/pi-tui`'s `Container`/`Text`/`Markdown` per upstream convention)
 - `security.ts`: agentScope policy + project-agent confirmation prompts; pure-where-possible
 - `output.ts`: truncation, formatting, display items; pure functions
 - `types.ts`: shared types only; no behavior
@@ -199,7 +200,8 @@ YAML frontmatter + body (body = system prompt):
 name: my-agent            # required, unique within scope
 description: Free-text used by parent LLM to pick this agent.
 tools: read, bash         # optional: comma-separated string OR yaml list
-model: claude-sonnet-4-5  # optional: omit to inherit dispatching model's model + thinkingLevel
+model: claude-sonnet-4-5  # optional: omit to inherit dispatching model's model
+thinkingLevel: low        # optional: "off" | "low" | "medium" | "high"; omit to inherit from parent
 ---
 
 System prompt goes here. Multi-line. Body is appended verbatim to pi's
@@ -212,7 +214,7 @@ system prompt at agent boot.
 
 **Conflict resolution:** with `agentScope: "both"`, project agents override user agents of the same name (mirrors upstream example).
 
-**Discovery implementation:** `agents.ts` exposes `discoverAgents(cwd, scope): { agents: AgentConfig[], projectAgentsDir: string | null }`. Project dir is found by walking parent directories (mirror upstream `findNearestProjectAgentsDir`).
+**Discovery implementation:** `agents.ts` exposes `discoverAgents(cwd, scope, bundledDir): { agents: AgentConfig[], projectAgentsDir: string | null, bundledDir: string }`. `bundledDir` is the absolute path to the package's own `agents/` directory, resolved at extension boot via `path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../agents")` (PiSubagent's `index.ts` will live at `src/index.ts`, so `../../agents` lands at the package root's `agents/`). Project dir is found by walking parent directories from `cwd` (mirror upstream `findNearestProjectAgentsDir`). YAML frontmatter parsing uses `parseFrontmatter` re-exported from `@earendil-works/pi-coding-agent` (peer dep already declared). Files with missing or non-string `name:` are skipped defensively (logs a warning to extension stderr, does not throw).
 
 ## Prompt File Format (`prompts/*.md`)
 
@@ -267,6 +269,26 @@ Mirrors the upstream `examples/extensions/subagent/index.ts` with these delibera
 | Exit codes | Pass-through | Pass-through; runner also emits `stopReason: "aborted"` on signal, `"error"` on non-zero exit | Match v1 error contract |
 | Tool call formatting | Inline `formatToolCall` in `index.ts` | Extracted into `output.ts` (shared with `renderResult`) | Single formatting source |
 
+**CLI flag composition per agent dispatch** (sequence matters — matches upstream `--mode json -p`):
+
+```
+pi \
+  --mode json \
+  -p \
+  --no-session \
+  --model <agent.model ?? parentModel>           # if set
+  --thinking <parentThinkingLevel>               # only if agent.model omitted (inherit dispatch)
+  --tools <agent.tools comma-joined>             # only if agent.tools present
+  --append-system-prompt <tempFile>              # only if agent.systemPrompt non-empty
+  Task: <task text>
+```
+
+Notes:
+- `--append-system-prompt <tmp>` and `Task: <text>` are mutually exclusive with the upstream `-p` prompt content — the agent's full instruction is the prompt itself.
+- `--mode json` ensures streamed events are parseable JSONL on stdout.
+- `--no-session` prevents the dispatched `pi` from creating a `.pi` history folder.
+- All flags that aren't always present are conditionally appended; the order is stable for unit testing.
+
 ## In-Process Backend (`src/runner/in-process.ts`) — v2 stub
 
 ```typescript
@@ -319,19 +341,24 @@ Limits (mirrors upstream; constants in `dispatch.ts`):
 
 Chain semantics: `{previous}` in any chain step's `task` is replaced with the preceding step's final assistant text. Stops at first failing step (matches upstream).
 
+**Abort-signal propagation:**
+- **Single mode:** parent signal aborts the single in-flight spawn. `killOnAbort(proc, signal)` fires; if `stopReason` resolves to `"aborted"` and exit happens, run returns with `exitCode: 0` and `stopReason: "aborted"`. Errors with the parent-tool result.
+- **Parallel mode:** parent signal aborts **all** in-flight spawns (the `mapWithConcurrencyLimit` helper watches the signal and calls `killOnAbort` on every running proc). Already-completed results stay in `details.results[]`; in-flight ones finalize as `stopReason: "aborted"`. Partial output is reported to parent.
+- **Chain mode:** parent signal aborts **the current step only**. The already-completed prior steps remain in `details.results[]` with their final outputs. The aborted current step is recorded as `stopReason: "aborted"`. Downstream steps do NOT execute.
+
 ## Discovery & Security (`src/security.ts` + `src/agents.ts`)
 
 - Default `agentScope` is `"user"`.
 - With `agentScope: "project" | "both"`, project-level agents are loaded. If `ctx.isProjectTrusted()` returns `false` AND `confirmProjectAgents !== false`, prompt once before any project agent runs. Trusted projects (`ctx.isProjectTrusted() === true`) skip the prompt. Matches the upstream extension's trust flow, which uses Pi's `ExtensionContext.isProjectTrusted()` and `ctx.hasUI` checks.
-- Project agents override user agents with the same name when `agentScope: "both"` — same precedence rule as upstream.
+- **Precedence (most-specific wins):** `project > user > bundled`. Bundled ships-with defaults are the fallback; user-level `~/.pi/agent/agents/*.md` overrides bundled; project-level `.pi/agents/*.md` (when `agentScope: "both"`) overrides everything. Implemented as `Map.set` insertion in reverse-priority order: bundled first, user second, project last (project wins on duplicate name).
 - The confirmation prompt lists the requested project agent names and the directory they're loaded from, then asks for explicit yes/no via `ctx.ui.confirm()`. Skipping cancels the call with `isError: true`.
 
 ## Render Layer (`src/render.ts`)
 
-Pure functions:
+Theme-injected functions; no extension I/O of their own.
 - `renderCall(args, theme): Text` — formatted compact view (single / parallel / chain variants)
-- `renderResult(result, opts, theme): Text | Container` — collapsed and expanded views
-- All output formatting (token counts, tool call formatting, final-output markdown rendering) lives in `output.ts`
+- `renderResult(result, opts, theme): Text | Container` — collapsed and expanded views. Returns either a single `Text` (collapsed) or a `Container` with multiple children (expanded) per upstream Pi TUI convention.
+- All output formatting (token counts, tool call formatting, final-output markdown rendering) lives in `output.ts`.
 
 Constants:
 - `COLLAPSED_ITEM_COUNT = 10` — items shown in collapsed view
@@ -427,11 +454,13 @@ The upstream `examples/extensions/subagent/` is **NOT** symlinked. PiSubagent is
 
 | Test file | Covers |
 |---|---|
-| `agents.test.ts` | frontmatter parsing (string and array tools), scope merging, project-dir walking, malformed file resilience |
-| `dispatch.test.ts` | modeCount validation (zero modes, multiple modes), chain `{previous}` substitution, chain stop on failure, parallel concurrency limit |
-| `runner-subprocess.test.ts` | `resolvePiInvocation()` across `node` / `bun` / generic runtime cases; `killOnAbort()` SIGTERM-then-SIGKILL escalation with fake timers; JSONL parsing of synthetic streams; `SingleResult` population from event sequence |
+| `agents.test.ts` | frontmatter parsing (string and array tools), scope merging, project-dir walking, malformed file resilience (skip + warn), bundled-dir resolution from `import.meta.url` |
+| `dispatch.test.ts` | modeCount validation (zero modes, multiple modes), chain `{previous}` substitution, chain stop on failure, parallel concurrency limit, abort-signal propagation to all in-flight parallel spawns and to the current chain step |
+| `runner-subprocess.test.ts` | `resolvePiInvocation()` across `node` / `bun` / generic runtime cases; `killOnAbort()` SIGTERM-then-SIGKILL escalation with fake timers; CLI flag composition per H6; JSONL parsing of synthetic streams; `SingleResult` population from event sequence |
 | `security.test.ts` | `agentScope` switching, project-agent confirmation prompt behavior on trusted vs untrusted projects, `confirmProjectAgents: false` opt-out |
 | `output.test.ts` | `formatTokens()` edge cases, `truncateParallelOutput()` byte-boundary correctness, `getDisplayItems()` filtering |
+| `render.test.ts` | `renderCall` for single/parallel/chain variants, `renderResult` collapsed + expanded; theme injection; no I/O |
+| `index.test.ts` | tool registration metadata (name, label, description), parameter schema exposed via `parameters`, mock agent boot round-trip |
 
 Mocking strategy: `runner/subprocess.ts` must take a `spawn: typeof spawn` injection so tests can replace it with a fake returning canned JSONL output. No live network or live `pi` subprocesses in unit tests.
 
@@ -441,7 +470,6 @@ Coverage gate: 80% line coverage on `runner/`, `agents.ts`, `security.ts`, `outp
 
 - **v2 In-Process backend** — depends on Aurex SDK-pattern verification. ADR candidate once that pattern is documented.
 - **Project-level prompts** — deferred. v1 only loads prompts from `~/.pi/agent/prompts/`.
-- **Cross-harness skill portability** — if user actively uses the merged skill in Claude Code/Codex today, the in-place replacement removes that fallback. v1 assumes Pi is primary; revisit if needed.
 - **Prompt registry caching** — every dispatch re-reads agents/*.md. Acceptable for v1 (cheap). Cache if profiling shows otherwise.
 - **`agentScope: "both"` UX** — currently one confirmation per call. Could become per-session sticky; deferred.
 
@@ -482,8 +510,9 @@ If any of these drift, propose a `docs/adr/0001-pisubagent-terminology.md` captu
 ## Self-Review (post-write)
 
 - Placeholder scan: no TBD / TODO / "fill in later". (Note: `src/prompts.ts` was initially stubbed with no v1 behavior; removed in self-review because Pi loads prompts from `~/.pi/agent/prompts/` directly.)
-- Internal consistency: `AgentRunner` interface ↔ `SubprocessRunner` implementation ↔ `dispatch.ts` invocation — consistent. All `id: "subprocess" | "in-process"` literals match both backend files.
+- Internal consistency: `AgentRunner` interface ↔ `SubprocessRunner` implementation ↔ `dispatch.ts` invocation — consistent. All `id: "subprocess" | "in-process"` literals match both backend files. Agent precedence rule (project > user > bundled) consistent between Discovery & Security section and Repo Layout's `agents.ts` discoverAgents signature.
 - Scope check: one feature, one design doc; implementation phases separated; writing-plans will atomize.
-- Ambiguity check: all parameter shapes TypeBox-explicit; CLI flags enumerated; defaults tagged on every optional; trust semantics pinned to `ctx.isProjectTrusted()` per upstream precedent.
-- Cross-reference: writing-plans skill hardcodes "Use superpowers:subagent-driven-development" by name — preserved by in-place skill rewrite.
-- User review pending.
+- Ambiguity check: all parameter shapes TypeBox-explicit; CLI flags enumerated (Subprocess Backend § CLI flag composition); defaults tagged on every optional; trust semantics pinned to `ctx.isProjectTrusted()` per upstream precedent; abort-signal propagation pinned per mode (single/parallel/chain).
+- Cross-reference: writing-plans skill hardcodes "Use superpowers:subagent-driven-development" by name — preserved by Q2 fork decision (we add a NEW skill, do not modify the merged one).
+- 2nd-pass review fixes applied: precedence rule explicit (H1); bundled agent path resolution pinned (H2); `parseFrontmatter` dep noted (H3); `tests/` → `test/` (H4); added `test/render.test.ts` and `test/index.test.ts` (H5); CLI flags enumerated (H6); `thinkingLevel:` added to agent frontmatter (H7); abort-signal semantics pinned (H8); render-layer wording corrected (M1); malformed-frontmatter skip behavior explicit (M2); `discoverAgents` signature updated for bundled dir (M3); render.ts file-responsibility bullet aligned (2nd pass); stray pipe and stale bullet removed (C1–C3); status updated (L3).
+- User review pending re-approval after 2nd-pass fixes.
