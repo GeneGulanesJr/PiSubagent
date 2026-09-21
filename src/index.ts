@@ -61,7 +61,7 @@ export default function (pi: ExtensionAPI) {
     ].join(" "),
     parameters: SubagentParamsSchema,
 
-    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+    async execute(_toolCallId, params, signal, onUpdate, ctx) {
       const p = params as Static<typeof SubagentParamsSchema>;
       const scope: AgentScope = p.agentScope ?? "user";
       const discovery = discoverAgents(ctx.cwd, scope, BUNDLED_DIR);
@@ -76,6 +76,8 @@ export default function (pi: ExtensionAPI) {
         },
         model: ctx.model ? { provider: ctx.model.provider, id: ctx.model.id } : undefined,
         thinkingLevel: ctx.thinkingLevel,
+        signal,
+        onUpdate: onUpdate ?? undefined,
       };
 
       const out: ToolResultLike = await execute(p as SubagentParams, dispatchCtx, discovery.agents);

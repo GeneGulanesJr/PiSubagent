@@ -1,10 +1,10 @@
 import { spawn as defaultSpawn } from "node:child_process";
-import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
-import type { SubagentParams, SubagentDetails, Mode, AgentConfig, SingleResult } from "./types.js";
+import type { AgentToolResult, ThinkingLevel } from "@earendil-works/pi-agent-core";
+import type { SubagentParams, SubagentDetails, Mode, AgentConfig, SingleResult, UsageStats, OnUpdateCallback } from "./types.js";
 import type { AgentRunner } from "./runner/runner.js";
 import { confirmProjectAgentsIfNeeded } from "./security.js";
 import { SubprocessRunner } from "./runner/subprocess.js";
-import { getFinalOutput, isFailedResult, getResultOutput } from "./output.js";
+import { getFinalOutput, isFailedResult, getResultOutput, formatTokens } from "./output.js";
 
 export const MAX_PARALLEL_TASKS = 8;
 export const MAX_CONCURRENCY = 4;
@@ -46,6 +46,12 @@ export interface DispatchContext {
   ui: { confirm: (title: string, message: string) => Promise<boolean> };
   model?: { provider: string; id: string };
   thinkingLevel?: ThinkingLevel;
+  /** Abort signal from the tool call (Esc); forwarded to every runner.run. */
+  signal?: AbortSignal;
+  /** Live-progress sink from the tool API; receives throttled running snapshots. */
+  onUpdate?: OnUpdateCallback;
+  /** Throttle window for progress emissions. Default 250ms; 0 disables coalescing. */
+  progressIntervalMs?: number;
 }
 
 export interface ToolResultLike {
@@ -62,6 +68,84 @@ function parentDefaults(ctx: DispatchContext): { parentModel?: string; parentThi
   return {
     parentModel: ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined,
     parentThinkingLevel: ctx.thinkingLevel,
+  };
+}
+
+const ZERO_USAGE: UsageStats = {
+  input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0,
+};
+
+function stubResult(agentCfg: AgentConfig, task: string): SingleResult {
+  return {
+    agent: agentCfg.name,
+    agentSource: agentCfg.source === "bundled" ? "user" : agentCfg.source,
+    task,
+    exitCode: 0,
+    messages: [],
+    stderr: "",
+    usage: { ...ZERO_USAGE },
+    running: true,
+  };
+}
+
+function progressLine(mode: Mode, results: readonly SingleResult[], total: number): string {
+  const done = results.filter((r) => !r.running).length;
+  if (mode === "single") {
+    const r = results[0];
+    if (!r) return "Running…";
+    return r.running
+      ? `${r.agent}: running… (${r.messages.length} msg, ↓${formatTokens(r.usage.output)} tok)`
+      : `${r.agent}: done`;
+  }
+  if (mode === "parallel") {
+    return `Running ${total} subagent${total === 1 ? "" : "s"}… (${done}/${total} done)`;
+  }
+  const current = results[results.length - 1];
+  return `Step ${results.length}/${total}: ${current ? current.agent : "?"} running…`;
+}
+
+type ProgressPayload = AgentToolResult<SubagentDetails>;
+
+function snapshot(mode: Mode, base: Omit<SubagentDetails, "results">, results: SingleResult[], total: number): ProgressPayload {
+  return {
+    content: [{ type: "text", text: progressLine(mode, results, total) }],
+    details: { ...base, results: results.map((r) => ({ ...r })) },
+  };
+}
+
+export const PROGRESS_THROTTLE_MS = 250;
+
+/**
+ * Leading+trailing throttle over the tool-level onUpdate sink. First call fires
+ * immediately; calls inside the window coalesce into one trailing emit carrying
+ * the latest payload. Undefined sink → undefined emitter (noop path).
+ */
+export function createProgressEmitter(
+  onUpdate: OnUpdateCallback | undefined,
+  intervalMs: number = PROGRESS_THROTTLE_MS,
+): ((payload: ProgressPayload) => void) | undefined {
+  if (!onUpdate) return undefined;
+  let lastEmit = 0;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let latest: ProgressPayload | undefined;
+  return (payload) => {
+    latest = payload;
+    const now = Date.now();
+    if (now - lastEmit >= intervalMs) {
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      lastEmit = now;
+      onUpdate(payload);
+      return;
+    }
+    if (timer) return;
+    timer = setTimeout(() => {
+      timer = null;
+      lastEmit = Date.now();
+      if (latest) onUpdate(latest);
+    }, intervalMs - (now - lastEmit));
   };
 }
 
@@ -116,19 +200,28 @@ export async function runSingle(
   agents: AgentConfig[],
   lookup: (name: string) => AgentConfig,
 ): Promise<ToolResultLike> {
-  const agent = lookup(params.agent!);
+  const agentCfg = lookup(params.agent!);
+  const base = baseDetails("single", params, null);
+  const results: SingleResult[] = [stubResult(agentCfg, params.task!)];
+  const emit = createProgressEmitter(ctx.onUpdate, ctx.progressIntervalMs);
+  emit?.(snapshot("single", base, results, 1));
   const result = await runner.run(
     {
-      agent,
+      agent: agentCfg,
       task: params.task!,
       cwd: params.cwd ?? ctx.cwd,
       ...parentDefaults(ctx),
     },
-    undefined,
+    ctx.signal,
+    (partial) => {
+      results[0] = { ...partial, running: true };
+      emit?.(snapshot("single", base, results, 1));
+    },
   );
+  results[0] = { ...result, running: false };
   return {
     content: [{ type: "text", text: getFinalOutput(result.messages) || "(no output)" }],
-    details: { ...baseDetails("single", params, null), results: [result] },
+    details: { ...base, results },
     isError: isFailedResult(result),
   };
 }
@@ -150,18 +243,33 @@ export async function runParallel(
       isError: true,
     };
   }
-  const allResults: SingleResult[] = await Promise.all(
-    tasks.map((t) =>
-      runner.run({
-        agent: lookup(t.agent),
-        task: t.task,
-        cwd: t.cwd ?? ctx.cwd,
-        ...parentDefaults(ctx),
-      }),
-    ),
+  const base = baseDetails("parallel", params, null);
+  const results: SingleResult[] = tasks.map((t) => stubResult(lookup(t.agent), t.task));
+  const emit = createProgressEmitter(ctx.onUpdate, ctx.progressIntervalMs);
+  emit?.(snapshot("parallel", base, results, tasks.length));
+  await Promise.all(
+    tasks.map((t, i) => {
+      const run = runner.run(
+        {
+          agent: lookup(t.agent),
+          task: t.task,
+          cwd: t.cwd ?? ctx.cwd,
+          ...parentDefaults(ctx),
+        },
+        ctx.signal,
+        (partial) => {
+          results[i] = { ...partial, running: true };
+          emit?.(snapshot("parallel", base, results, tasks.length));
+        },
+      );
+      return run.then((final) => {
+        results[i] = { ...final, running: false };
+        emit?.(snapshot("parallel", base, results, tasks.length));
+      });
+    }),
   );
-  const successCount = allResults.filter((r) => !isFailedResult(r)).length;
-  const summaries = allResults.map((r) => {
+  const successCount = results.filter((r) => !isFailedResult(r)).length;
+  const summaries = results.map((r) => {
     const status = isFailedResult(r) ? "failed" : "completed";
     const body = getResultOutput(r);
     return `### [${r.agent}] ${status}\n\n${body}`;
@@ -170,11 +278,11 @@ export async function runParallel(
     content: [
       {
         type: "text",
-        text: `Parallel: ${successCount}/${allResults.length} succeeded\n\n${summaries.join("\n\n---\n\n")}`,
+        text: `Parallel: ${successCount}/${results.length} succeeded\n\n${summaries.join("\n\n---\n\n")}`,
       },
     ],
-    details: { ...baseDetails("parallel", params, null), results: allResults },
-    isError: successCount < allResults.length,
+    details: { ...base, results },
+    isError: successCount < results.length,
   };
 }
 
@@ -186,20 +294,32 @@ export async function runChain(
   lookup: (name: string) => AgentConfig,
 ): Promise<ToolResultLike> {
   const steps = params.chain!;
+  const base = baseDetails("chain", params, null);
   const results: SingleResult[] = [];
+  const emit = createProgressEmitter(ctx.onUpdate, ctx.progressIntervalMs);
   let previousOutput = "";
 
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i];
     const resolvedTask = step.task.replace(/\{previous\}/g, previousOutput);
-    const result = await runner.run({
-      agent: lookup(step.agent),
-      task: step.task,
-      cwd: step.cwd ?? ctx.cwd,
-      resolvedTask,
-      ...parentDefaults(ctx),
-    });
-    results.push(result);
+    results.push(stubResult(lookup(step.agent), step.task));
+    emit?.(snapshot("chain", base, results, steps.length));
+    const result = await runner.run(
+      {
+        agent: lookup(step.agent),
+        task: step.task,
+        cwd: step.cwd ?? ctx.cwd,
+        resolvedTask,
+        ...parentDefaults(ctx),
+      },
+      ctx.signal,
+      (partial) => {
+        results[i] = { ...partial, running: true };
+        emit?.(snapshot("chain", base, results, steps.length));
+      },
+    );
+    results[i] = { ...result, running: false };
+    emit?.(snapshot("chain", base, results, steps.length));
 
     if (isFailedResult(result)) {
       return {
@@ -209,7 +329,7 @@ export async function runChain(
             text: `Chain stopped at step ${i + 1} (${step.agent}): ${getResultOutput(result)}`,
           },
         ],
-        details: { ...baseDetails("chain", params, null), results },
+        details: { ...base, results },
         isError: true,
       };
     }
@@ -219,6 +339,7 @@ export async function runChain(
   const final = results[results.length - 1];
   return {
     content: [{ type: "text", text: getFinalOutput(final.messages) || "(no output)" }],
-    details: { ...baseDetails("chain", params, null), results },
+    details: { ...base, results },
+    isError: false,
   };
 }

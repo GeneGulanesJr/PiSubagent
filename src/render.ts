@@ -45,7 +45,7 @@ export function renderCall(args: SubagentParams, theme: TuiTheme): string {
 
 export function renderResult(
   result: { content: Array<{ type: "text"; text: string }>; details: SubagentDetails; isError?: boolean },
-  opts: { expanded?: boolean },
+  opts: { expanded?: boolean; isPartial?: boolean },
   theme: TuiTheme,
 ): string {
   const details = result.details;
@@ -59,20 +59,27 @@ export function renderResult(
     return renderSingleResult(results[0], opts.expanded === true, theme);
   }
 
-  return renderMultiResult(details.mode, results, theme);
+  return renderMultiResult(details.mode, results, theme, opts.isPartial === true);
 }
+
+const RUNNING_ICON = "◐";
 
 function renderSingleResult(r: SingleResult, expanded: boolean, theme: TuiTheme): string {
   const failed = isFailedResult(r);
-  const icon = failed ? theme.fg("error", "✗") : theme.fg("success", "✓");
+  const icon = r.running
+    ? theme.fg("accent", RUNNING_ICON)
+    : failed
+      ? theme.fg("error", "✗")
+      : theme.fg("success", "✓");
 
   let text = `${icon} ${theme.fg("toolTitle", theme.bold(r.agent))}${theme.fg("muted", ` (${r.agentSource})`)}`;
+  if (r.running) text += theme.fg("muted", " running…");
   if (failed && r.stopReason) text += ` ${theme.fg("error", `[${r.stopReason}]`)}`;
   if (failed && r.errorMessage) text += `\n${theme.fg("error", `Error: ${r.errorMessage}`)}`;
 
   const displayItems = getDisplayItems(r.messages);
   if (displayItems.length === 0 && !failed) {
-    text += `\n${theme.fg("muted", "(no output)")}`;
+    if (!r.running) text += `\n${theme.fg("muted", "(no output)")}`;
   } else {
     const toShow = displayItems.slice(-COLLAPSED_ITEM_COUNT);
     const skipped = displayItems.length - toShow.length;
@@ -97,14 +104,30 @@ function renderSingleResult(r: SingleResult, expanded: boolean, theme: TuiTheme)
   return text;
 }
 
-function renderMultiResult(mode: SubagentDetails["mode"], results: SingleResult[], theme: TuiTheme): string {
-  const successCount = results.filter((r) => !isFailedResult(r)).length;
-  const allGood = successCount === results.length;
-  const icon = allGood ? theme.fg("success", "✓") : theme.fg("error", "✗");
+function renderMultiResult(
+  mode: SubagentDetails["mode"],
+  results: SingleResult[],
+  theme: TuiTheme,
+  isPartial = false,
+): string {
+  const successCount = results.filter((r) => !isFailedResult(r) && !r.running).length;
+  const failedCount = results.filter((r) => isFailedResult(r)).length;
+  const doneCount = results.filter((r) => !r.running).length;
 
-  let text = `${icon} ${theme.fg("toolTitle", theme.bold(mode))} ${theme.fg("accent", `${successCount}/${results.length}`)}`;
+  const icon = isPartial
+    ? theme.fg("accent", RUNNING_ICON)
+    : failedCount === 0
+      ? theme.fg("success", "✓")
+      : theme.fg("error", "✗");
+  const count = isPartial ? doneCount : successCount;
+
+  let text = `${icon} ${theme.fg("toolTitle", theme.bold(mode))} ${theme.fg("accent", `${count}/${results.length}`)}`;
   for (const r of results) {
-    const rIcon = isFailedResult(r) ? theme.fg("error", "✗") : theme.fg("success", "✓");
+    const rIcon = r.running
+      ? theme.fg("accent", RUNNING_ICON)
+      : isFailedResult(r)
+        ? theme.fg("error", "✗")
+        : theme.fg("success", "✓");
     text += `\n  ${rIcon} ${theme.fg("accent", r.agent)}`;
   }
   return text;

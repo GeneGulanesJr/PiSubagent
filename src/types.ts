@@ -35,6 +35,8 @@ export interface SingleResult {
   stopReason?: string;
   errorMessage?: string;
   step?: number;
+  /** True while this agent is still executing (progress snapshots); false once settled. */
+  running?: boolean;
 }
 
 export interface SubagentDetails {
