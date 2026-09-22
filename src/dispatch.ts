@@ -4,7 +4,7 @@ import type { SubagentParams, SubagentDetails, Mode, AgentConfig, SingleResult, 
 import type { AgentRunner } from "./runner/runner.js";
 import { confirmProjectAgentsIfNeeded } from "./security.js";
 import { SubprocessRunner } from "./runner/subprocess.js";
-import { getFinalOutput, isFailedResult, getResultOutput, formatTokens } from "./output.js";
+import { getFinalOutput, isFailedResult, getResultOutput, formatTokens, truncateParallelOutput } from "./output.js";
 
 export const MAX_PARALLEL_TASKS = 8;
 export const MAX_CONCURRENCY = 4;
@@ -287,7 +287,12 @@ export async function runParallel(
   const successCount = results.filter((r) => !isFailedResult(r)).length;
   const summaries = results.map((r) => {
     const status = isFailedResult(r) ? "failed" : "completed";
-    const body = getResultOutput(r);
+    // Cap each per-agent summary body at PER_TASK_OUTPUT_CAP bytes so a single
+    // chatty agent can't flood the parent's context with multi-MB content text.
+    // The full output is still preserved verbatim in details.results[i].messages
+    // — only the joined `content[0].text` that the parent model sees is capped.
+    // Spec: docs/superpowers/specs/2026-09-08-pisubagent-design.md § Limits.
+    const body = truncateParallelOutput(getResultOutput(r), PER_TASK_OUTPUT_CAP);
     return `### [${r.agent}] ${status}\n\n${body}`;
   });
   return {
@@ -349,7 +354,7 @@ export async function runChain(
         isError: true,
       };
     }
-    previousOutput = getFinalOutput(result.messages);
+    previousOutput = truncateParallelOutput(getFinalOutput(result.messages), PER_TASK_OUTPUT_CAP);
   }
 
   const final = results[results.length - 1];

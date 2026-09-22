@@ -1,9 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
+import type { Message } from "@earendil-works/pi-ai";
 import {
   detectMode,
   buildInvalidParamsError,
   execute,
   MAX_CONCURRENCY,
+  PER_TASK_OUTPUT_CAP,
   type DispatchContext,
 } from "../src/dispatch.js";
 import type { AgentRunner } from "../src/runner/runner.js";
@@ -27,6 +29,19 @@ function makeFakeResult(agentName: string): SingleResult {
     stderr: "",
     usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 1 },
     model: "fake",
+  };
+}
+
+/** SingleResult whose final assistant text is `text`. Only the shape read by
+ *  output.ts (role/content) matters to dispatch; other AssistantMessage fields
+ *  are intentionally omitted and the message is cast to Message[]. */
+function makeResultWithText(agentName: string, text: string): SingleResult {
+  const messages = [
+    { role: "assistant", content: [{ type: "text", text }] },
+  ] as unknown as Message[];
+  return {
+    ...makeFakeResult(agentName),
+    messages,
   };
 }
 
@@ -197,5 +212,138 @@ describe("execute() denial path: details.mode (issue #1, Bug 2)", () => {
     );
     expect(out.isError).toBe(true);
     expect(out.details.mode).toBe("single");
+  });
+});
+
+// Regression: issue #2 Bug 1 — runParallel must cap each per-agent summary
+// body at PER_TASK_OUTPUT_CAP bytes before joining into content[0].text.
+// Spec: docs/superpowers/specs/2026-09-08-pisubagent-design.md § Limits.
+// Prior to the fix, summaries[i].body was the raw getResultOutput(r); a single
+// chatty agent could flood the parent's context with multi-MB content text.
+// The full output is still preserved in details.results[i].messages — only
+// the joined `content[0].text` payload is capped.
+describe("runParallel truncates each per-agent output to PER_TASK_OUTPUT_CAP", () => {
+  it("caps every per-agent summary body and marks the join", async () => {
+    // 80KB of text > 50KB cap so truncation MUST happen.
+    const big = "x".repeat(80 * 1024);
+    const runner: AgentRunner = {
+      id: "subprocess",
+      run: async (input) => makeResultWithText(input.agent.name, big),
+    };
+    const tasks = [
+      { agent: "a", task: "t0" },
+      { agent: "a", task: "t1" },
+    ];
+    const agents: AgentConfig[] = [
+      { name: "a", description: "", systemPrompt: "", source: "bundled", filePath: "" },
+    ];
+    const ctx: DispatchContext = {
+      cwd: "/tmp",
+      hasUI: false,
+      isProjectTrusted: () => true,
+      ui: { confirm: async () => true },
+    };
+
+    const out = await execute({ tasks }, ctx, agents, runner);
+    expect(out.isError).toBe(false);
+    expect(out.details.mode).toBe("parallel");
+    expect(out.details.results).toHaveLength(tasks.length);
+
+    const text = out.content[0].type === "text" ? out.content[0].text : "";
+    const marker = "[Output truncated:";
+    // Exactly one truncation marker per result.
+    expect(text.split(marker).length - 1).toBe(tasks.length);
+    expect(text).toContain(marker);
+    // Joined payload must be much smaller than the un-capped raw output.
+    // Each summary body is capped at PER_TASK_OUTPUT_CAP plus the marker +
+    // small per-agent heading; two summaries must comfortably fit.
+    expect(Buffer.byteLength(text, "utf8")).toBeLessThan(
+      PER_TASK_OUTPUT_CAP * tasks.length + 512,
+    );
+    expect(Buffer.byteLength(text, "utf8")).toBeGreaterThan(PER_TASK_OUTPUT_CAP);
+
+    // details.results must still hold the full untruncated messages.
+    for (const r of out.details.results) {
+      const msg = r.messages[0] as { content: Array<{ type: string; text?: string }> };
+      expect(msg.content[0].text?.length).toBe(80 * 1024);
+    }
+  });
+
+  it("leaves small outputs untouched (no marker when below cap)", async () => {
+    // 1KB << 50KB cap → no truncation.
+    const small = "y".repeat(1024);
+    const runner: AgentRunner = {
+      id: "subprocess",
+      run: async (input) => makeResultWithText(input.agent.name, small),
+    };
+    const tasks = [{ agent: "a", task: "t0" }];
+    const agents: AgentConfig[] = [
+      { name: "a", description: "", systemPrompt: "", source: "bundled", filePath: "" },
+    ];
+    const ctx: DispatchContext = {
+      cwd: "/tmp",
+      hasUI: false,
+      isProjectTrusted: () => true,
+      ui: { confirm: async () => true },
+    };
+    const out = await execute({ tasks }, ctx, agents, runner);
+    const text = out.content[0].type === "text" ? out.content[0].text : "";
+    expect(text).not.toContain("[Output truncated:");
+    expect(text).toContain("y".repeat(64)); // a chunk of the small payload
+  });
+});
+
+// Regression: issue #2 Bug 6 — runChain must cap the previous step's output
+// before substituting it into the next step's prompt. Without the cap, a
+// 1MB prior output becomes a 1MB prompt for the next step. Spec: docs/superpowers
+// /specs/2026-09-08-pisubagent-design.md § Limits. truncateParallelOutput is
+// the canonical reducer (shared with the parallel path), so the marker is the
+// same `[Output truncated: ... bytes omitted]` the parent will see.
+describe("runChain caps {previous} to PER_TASK_OUTPUT_CAP", () => {
+  it("truncates previous step output before substituting into next step", async () => {
+    // 80KB final text > 50KB cap so truncation MUST happen.
+    const big = "y".repeat(80 * 1024);
+    const calls: Array<{ agent: string; resolvedTask?: string }> = [];
+    const runner: AgentRunner = {
+      id: "subprocess",
+      run: async (input) => {
+        calls.push({ agent: input.agent.name, resolvedTask: input.resolvedTask });
+        // Step 1 emits the big text. Step 2 emits an empty success.
+        return calls.length === 1
+          ? makeResultWithText(input.agent.name, big)
+          : makeFakeResult(input.agent.name);
+      },
+    };
+    const agents: AgentConfig[] = [
+      { name: "a", description: "", systemPrompt: "", source: "bundled", filePath: "" },
+      { name: "b", description: "", systemPrompt: "", source: "bundled", filePath: "" },
+    ];
+    const ctx: DispatchContext = {
+      cwd: "/tmp",
+      hasUI: false,
+      isProjectTrusted: () => true,
+      ui: { confirm: async () => true },
+    };
+    const chain = [
+      { agent: "a", task: "produce output" },
+      { agent: "b", task: "consume {previous}" },
+    ];
+
+    const out = await execute({ chain }, ctx, agents, runner);
+    expect(out.isError).toBe(false);
+    expect(calls).toHaveLength(2);
+
+    // Step 1 has no {previous} placeholder → resolvedTask is the raw task.
+    expect(calls[0].resolvedTask).toBe("produce output");
+
+    // Step 2's prompt is the truncated previous output. The marker MUST be
+    // present and the full 80KB MUST NOT be embedded in the prompt.
+    const step2Resolved = calls[1].resolvedTask;
+    expect(step2Resolved).toBeDefined();
+    expect(step2Resolved).toContain("[Output truncated:");
+    expect(step2Resolved!.length).toBeLessThan(80 * 1024);
+    // The preserved prefix is still there (truncateParallelOutput keeps the
+    // first PER_TASK_OUTPUT_CAP bytes verbatim).
+    expect(step2Resolved).toContain("y");
   });
 });
