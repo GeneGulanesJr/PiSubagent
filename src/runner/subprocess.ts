@@ -13,6 +13,9 @@ export interface PiInvocation {
   args: string[];
 }
 
+/** Hard cap on stdout line buffer / stderr accumulator per run (1 MB). */
+const MAX_BUFFER_BYTES = 1024 * 1024;
+
 /**
  * Resolve how to invoke a child `pi` process.
  * - Prefer re-invoking the current entrypoint (process.execPath + current script).
@@ -35,6 +38,8 @@ export function resolvePiInvocation(args: string[]): PiInvocation {
 /**
  * Write an agent's system prompt to a mode-0600 temp file for
  * `--append-system-prompt`. Caller owns cleanup of the returned dir.
+ * On write failure, self-cleans its own tmpdir to avoid orphan leaks
+ * and rethrows.
  */
 export async function writePromptFile(
   agentName: string,
@@ -43,22 +48,35 @@ export async function writePromptFile(
   const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "pi-subagent-"));
   const safeName = agentName.replace(/[^\w.-]+/g, "_");
   const filePath = path.join(tmpDir, `prompt-${safeName}.md`);
-  await withFileMutationQueue(filePath, async () => {
-    await fs.promises.writeFile(filePath, prompt, { encoding: "utf-8", mode: 0o600 });
-  });
-  return { dir: tmpDir, filePath };
+  try {
+    await withFileMutationQueue(filePath, async () => {
+      await fs.promises.writeFile(filePath, prompt, { encoding: "utf-8", mode: 0o600 });
+    });
+    return { dir: tmpDir, filePath };
+  } catch (err) {
+    // Best-effort orphan cleanup; never mask the original error.
+    try {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
+    throw err;
+  }
 }
 
 /**
  * Kill `proc` when `signal` aborts: SIGTERM immediately, SIGKILL after 5s grace.
- * If the signal is already aborted, kills immediately.
+ * The grace timer is `.unref()`'d so it never keeps the event loop alive
+ * after the runner has settled. If the signal is already aborted, kills
+ * immediately.
  */
 export function killOnAbort(proc: ChildProcess, signal: AbortSignal): void {
   const killProc = () => {
     proc.kill("SIGTERM");
-    setTimeout(() => {
+    const sigkill = setTimeout(() => {
       if (!proc.killed) proc.kill("SIGKILL");
     }, 5000);
+    sigkill.unref();
   };
   if (signal.aborted) killProc();
   else signal.addEventListener("abort", killProc, { once: true });
@@ -68,7 +86,9 @@ export type JsonlEvent = Record<string, unknown> & { type?: string };
 
 /**
  * Parse newline-delimited JSON from a buffered stream chunk.
- * Malformed and blank lines are skipped silently.
+ * Malformed and blank lines are skipped silently. Callers that need to
+ * observe malformed drops should track them themselves (see
+ * SubprocessRunner.run, which surfaces a single stderr summary at end).
  */
 export function* parseJsonlEvents(stream: string): IterableIterator<JsonlEvent> {
   for (const line of stream.split("\n")) {
@@ -85,6 +105,13 @@ export function* parseJsonlEvents(stream: string): IterableIterator<JsonlEvent> 
 export interface SubprocessRunnerOptions {
   /** Injectable spawn for tests; defaults to node:child_process spawn. */
   spawnFn?: typeof spawn;
+  /**
+   * Optional hard timeout in milliseconds. If the subprocess hasn't
+   * exited within this window, SIGTERM is sent (escalating to SIGKILL
+   * after 5s) and the run is finalized with `stopReason: "aborted"` and
+   * `errorMessage: "run timeout after Xms"`. Default: no timeout.
+   */
+  runTimeoutMs?: number;
 }
 
 function emptyUsage(): UsageStats {
@@ -94,9 +121,11 @@ function emptyUsage(): UsageStats {
 export class SubprocessRunner implements AgentRunner {
   readonly id = "subprocess" as const;
   private readonly spawnFn: typeof spawn;
+  private readonly runTimeoutMs?: number;
 
   constructor(options: SubprocessRunnerOptions = {}) {
     this.spawnFn = options.spawnFn ?? spawn;
+    this.runTimeoutMs = options.runTimeoutMs;
   }
 
   /**
@@ -156,13 +185,38 @@ export class SubprocessRunner implements AgentRunner {
     let tmpPromptDir: string | null = null;
     let tmpPromptPath: string | null = null;
     let wasAborted = false;
+    let droppedJsonlCount = 0;
+    let onUpdateErrorLogged = false;
+
+    /**
+     * Append to stderr but never grow past MAX_BUFFER_BYTES. Used by both
+     * the live stderr stream (Bug 2) and the post-close JSONL-drop
+     * summary (Bug 7) so neither can OOM the parent.
+     */
+    const appendStderr = (text: string) => {
+      if (text.length === 0) return;
+      if (result.stderr.length > MAX_BUFFER_BYTES) return;
+      result.stderr += text;
+      if (result.stderr.length > MAX_BUFFER_BYTES) {
+        // Truncate at the cap so subsequent appends are short-circuited.
+        result.stderr = result.stderr.slice(0, MAX_BUFFER_BYTES);
+      }
+    };
 
     try {
       if (input.agent.systemPrompt.trim()) {
-        const tmp = await writePromptFile(input.agent.name, input.agent.systemPrompt);
-        tmpPromptDir = tmp.dir;
-        tmpPromptPath = tmp.filePath;
-        args.push("--append-system-prompt", tmpPromptPath);
+        try {
+          const tmp = await writePromptFile(input.agent.name, input.agent.systemPrompt);
+          tmpPromptDir = tmp.dir;
+          tmpPromptPath = tmp.filePath;
+          args.push("--append-system-prompt", tmpPromptPath);
+        } catch (err) {
+          // writePromptFile already self-cleaned its tmpdir. Continue
+          // without the system prompt so a transient tmpdir failure
+          // doesn't kill an entire dispatch.
+          const msg = err instanceof Error ? err.message : String(err);
+          appendStderr(`[subprocess: failed to write system prompt: ${msg}]\n`);
+        }
       }
       args.push(`Task: ${input.resolvedTask ?? input.task}`);
 
@@ -175,6 +229,8 @@ export class SubprocessRunner implements AgentRunner {
         });
 
         let buffer = "";
+        let stdoutTruncated = false;
+
         const ingest = (msg: Message) => {
           result.messages.push(msg);
           if (msg.role === "assistant") {
@@ -199,7 +255,18 @@ export class SubprocessRunner implements AgentRunner {
             if (meta.stopReason) result.stopReason = meta.stopReason;
             if (meta.errorMessage) result.errorMessage = meta.errorMessage;
           }
-          onUpdate?.(result);
+          // Bug 5: onUpdate callback exceptions must not crash dispatch.
+          // Log a one-time stderr note and keep going — sibling runs are
+          // isolated from this one's callback failures.
+          try {
+            onUpdate?.(result);
+          } catch (err) {
+            if (!onUpdateErrorLogged) {
+              onUpdateErrorLogged = true;
+              const msg2 = err instanceof Error ? err.message : String(err);
+              appendStderr(`[subprocess: onUpdate callback threw: ${msg2}]\n`);
+            }
+          }
         };
 
         const processLine = (line: string) => {
@@ -209,6 +276,9 @@ export class SubprocessRunner implements AgentRunner {
           try {
             event = JSON.parse(trimmed);
           } catch {
+            // Bug 7: malformed lines are tallied for a single end-of-run
+            // summary; never log per-line (would itself be unbounded).
+            droppedJsonlCount++;
             return;
           }
           if (event.type === "message_end" && event.message) {
@@ -218,7 +288,18 @@ export class SubprocessRunner implements AgentRunner {
 
         if (proc.stdout) {
           proc.stdout.on("data", (chunk: Buffer | string) => {
-            buffer += chunk.toString();
+            const text = chunk.toString();
+            // Bug 2: once the line buffer exceeds the cap, stop growing
+            // it and stop splitting/processing new stdout. Append a
+            // one-time stderr marker so operators see the truncation.
+            if (buffer.length > MAX_BUFFER_BYTES) {
+              if (!stdoutTruncated) {
+                stdoutTruncated = true;
+                appendStderr(`[truncated: stdout exceeded 1MB]\n`);
+              }
+              return;
+            }
+            buffer += text;
             const lines = buffer.split("\n");
             buffer = lines.pop() ?? "";
             for (const line of lines) processLine(line);
@@ -226,7 +307,9 @@ export class SubprocessRunner implements AgentRunner {
         }
         if (proc.stderr) {
           proc.stderr.on("data", (chunk: Buffer | string) => {
-            result.stderr += chunk.toString();
+            // Bug 2: cap stderr growth at MAX_BUFFER_BYTES; drop new
+            // bytes (don't grow) once we're past the threshold.
+            appendStderr(chunk.toString());
           });
         }
 
@@ -240,30 +323,53 @@ export class SubprocessRunner implements AgentRunner {
           const onAbort = () => {
             wasAborted = true;
             proc.kill("SIGTERM");
-            setTimeout(() => {
+            const sigkill = setTimeout(() => {
               if (proc.exitCode === null && !proc.killed) proc.kill("SIGKILL");
             }, 5000);
+            sigkill.unref();
           };
           if (signal.aborted) onAbort();
           else signal.addEventListener("abort", onAbort, { once: true });
         }
+
+        // Bug 3: optional hard timeout. Mirrors the abort pattern above
+        // (SIGTERM now, SIGKILL after 5s grace). The grace timer is
+        // `.unref()`'d so it never keeps the event loop alive once the
+        // runner has settled.
+        if (this.runTimeoutMs !== undefined && this.runTimeoutMs > 0) {
+          const onTimeout = () => {
+            wasAborted = true;
+            proc.kill("SIGTERM");
+            const sigkill = setTimeout(() => {
+              if (proc.exitCode === null && !proc.killed) proc.kill("SIGKILL");
+            }, 5000);
+            sigkill.unref();
+            result.stopReason = "aborted";
+            result.errorMessage = `run timeout after ${this.runTimeoutMs}ms`;
+          };
+          setTimeout(onTimeout, this.runTimeoutMs);
+        }
       });
+
+      // Bug 7: surface malformed-JSONL drops as a single stderr line so
+      // operators can spot a misbehaving child without filling memory.
+      if (droppedJsonlCount > 0) {
+        appendStderr(
+          `[subprocess: ${droppedJsonlCount} malformed JSONL lines dropped]\n`,
+        );
+      }
 
       result.exitCode = exitCode;
       if (wasAborted) result.stopReason = "aborted";
       else if (exitCode !== 0 && !result.stopReason) result.stopReason = "error";
       return result;
     } finally {
-      if (tmpPromptPath) {
-        try {
-          fs.unlinkSync(tmpPromptPath);
-        } catch {
-          /* ignore */
-        }
-      }
+      // Bug 4: best-effort cleanup of both file and dir in one go.
+      // `recursive: true` handles the non-empty-dir case (file still
+      // present); `force: true` ignores ENOENT for missing entries.
       if (tmpPromptDir) {
         try {
-          fs.rmdirSync(tmpPromptDir);
+          fs.rmSync(tmpPromptDir, { recursive: true, force: true });
         } catch {
           /* ignore */
         }
