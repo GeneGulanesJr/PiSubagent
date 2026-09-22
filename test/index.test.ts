@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeAll } from "vitest";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import * as subagentMod from "../src/index.js";
 
 const registerTool = vi.fn();
 const pi = { registerTool } as unknown as ExtensionAPI;
 
-beforeAll(async () => {
-  const mod = await import("../src/index.js");
-  mod.default(pi);
+beforeAll(() => {
+  subagentMod.default(pi);
 });
 
 describe("subagent tool registration", () => {

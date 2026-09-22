@@ -102,7 +102,7 @@ describe("runParallel concurrency cap (issue #1, Bug 1)", () => {
     const release = deferred<undefined>();
 
     const runner: AgentRunner = {
-      id: "fake",
+      id: "subprocess",
       run: async (input) => {
         inFlight++;
         peak = Math.max(peak, inFlight);
