@@ -114,6 +114,18 @@ export function resolveBundledAgentsDir(importMetaUrl: string): string {
  * Discover agents from bundled, user, and project directories.
  * Precedence (most-specific wins): project > user > bundled.
  * Implemented via Map.set insertion in reverse-priority order.
+ *
+ * AgentScope semantics:
+ *   - "user"    → bundled + user sources; project agents NEVER loaded.
+ *   - "project" → project source only (bundled and user skipped).
+ *   - "both"    → bundled + user + project sources.
+ *
+ * Note: the TypeBox schema in src/index.ts constrains the public surface to
+ * exactly these three values. As defensive code (and to make the runtime
+ * behavior obvious to readers), anything that is not "user" or "project" is
+ * treated as "both". This previously fell through implicitly via the
+ * `scope === "user" || !projectAgentsDir` check, which silently merged
+ * unknown values into the all-three-source path. That is now explicit.
  */
 export function discoverAgents(
   cwd: string,
@@ -123,10 +135,27 @@ export function discoverAgents(
   const userDir = path.join(getAgentDir(), "agents");
   const projectAgentsDir = findNearestProjectAgentsDir(cwd);
 
-  const bundledAgents = scope === "project" ? [] : loadAgentsFromDir(bundledDir, "bundled");
-  const userAgents = scope === "project" ? [] : loadAgentsFromDir(userDir, "user");
+  // Scope → load-source matrix. The TypeBox schema in src/index.ts already
+  // constrains the public surface to "user" | "project" | "both"; this is
+  // defensive runtime handling so the matrix is obvious to readers and the
+  // previous implicit fallthrough (silently loading everything for any
+  // value that wasn't "user" or "project") is no longer a surprise.
+  //
+  //   scope         bundled  user  project
+  //   "user"          yes     yes    no
+  //   "project"        no      no    yes
+  //   "both"          yes     yes    yes
+  //   anything else   yes     yes    yes  (defensive: same as "both")
+  const loadBundled = scope !== "project";
+  const loadUser = scope !== "project";
+  const loadProject = scope !== "user";
+
+  const bundledAgents = loadBundled ? loadAgentsFromDir(bundledDir, "bundled") : [];
+  const userAgents = loadUser ? loadAgentsFromDir(userDir, "user") : [];
   const projectAgents =
-    scope === "user" || !projectAgentsDir ? [] : loadAgentsFromDir(projectAgentsDir, "project");
+    loadProject && projectAgentsDir
+      ? loadAgentsFromDir(projectAgentsDir, "project")
+      : [];
 
   const agentMap = new Map<string, AgentConfig>();
   for (const a of bundledAgents) agentMap.set(a.name, a);

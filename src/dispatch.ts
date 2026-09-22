@@ -171,9 +171,13 @@ export async function execute(
 
   const decision = await confirmProjectAgentsIfNeeded(params, agents, ctx);
   if (!decision.continue) {
+    // Use the detected mode so `details.mode` reflects what the user invoked,
+    // not a placeholder. Before this fix, a parallel or chain call that was
+    // denied at the confirmation gate would report `mode: "single"` to
+    // consumers (rendering, logging, automation), lying about the request.
     return {
       content: [{ type: "text", text: "Canceled: project-local agents not approved." }],
-      details: { ...baseDetails("single", params, null), results: [] },
+      details: { ...baseDetails(mode, params, null), results: [] },
       isError: true,
     };
   }
@@ -247,27 +251,39 @@ export async function runParallel(
   const results: SingleResult[] = tasks.map((t) => stubResult(lookup(t.agent), t.task));
   const emit = createProgressEmitter(ctx.onUpdate, ctx.progressIntervalMs);
   emit?.(snapshot("parallel", base, results, tasks.length));
-  await Promise.all(
-    tasks.map((t, i) => {
-      const run = runner.run(
-        {
-          agent: lookup(t.agent),
-          task: t.task,
-          cwd: t.cwd ?? ctx.cwd,
-          ...parentDefaults(ctx),
-        },
-        ctx.signal,
-        (partial) => {
-          results[i] = { ...partial, running: true };
-          emit?.(snapshot("parallel", base, results, tasks.length));
-        },
-      );
-      return run.then((final) => {
-        results[i] = { ...final, running: false };
-        emit?.(snapshot("parallel", base, results, tasks.length));
-      });
-    }),
-  );
+  // Per-batch concurrency cap. The design spec (docs/superpowers/specs/2026-09-08-pisubagent-design.md
+  // § Limits) advertises MAX_CONCURRENCY = 4 as a per-batch window — at most N
+  // runs in flight at any moment. Prior to this fix the entire tasks[] array
+  // fired via bare Promise.all, which made the cap unenforced (API drift).
+  // Implementation: chunk into batches of size MAX_CONCURRENCY, await each
+  // batch's Promise.all before starting the next. Result order and progress
+  // emissions are identical to the unbounded version.
+  for (let batchStart = 0; batchStart < tasks.length; batchStart += MAX_CONCURRENCY) {
+    const batchEnd = Math.min(batchStart + MAX_CONCURRENCY, tasks.length);
+    await Promise.all(
+      tasks.slice(batchStart, batchEnd).map((t, j) => {
+        const i = batchStart + j;
+        return runner
+          .run(
+            {
+              agent: lookup(t.agent),
+              task: t.task,
+              cwd: t.cwd ?? ctx.cwd,
+              ...parentDefaults(ctx),
+            },
+            ctx.signal,
+            (partial) => {
+              results[i] = { ...partial, running: true };
+              emit?.(snapshot("parallel", base, results, tasks.length));
+            },
+          )
+          .then((final) => {
+            results[i] = { ...final, running: false };
+            emit?.(snapshot("parallel", base, results, tasks.length));
+          });
+      }),
+    );
+  }
   const successCount = results.filter((r) => !isFailedResult(r)).length;
   const summaries = results.map((r) => {
     const status = isFailedResult(r) ? "failed" : "completed";
