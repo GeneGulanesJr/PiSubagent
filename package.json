@@ -36,7 +36,7 @@
     "verify": "npm run typecheck && npm run lint && npm test",
     "mutate": "stryker run",
     "clean": "rm -rf dist coverage .vitest-cache reports",
-    "prepare": "husky"
+    "prepare": "command -v husky >/dev/null 2>&1 && husky || true"
   },
   "peerDependencies": {
     "@earendil-works/pi-agent-core": "*",
