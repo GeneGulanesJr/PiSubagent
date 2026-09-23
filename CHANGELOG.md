@@ -7,16 +7,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-09-23
+
+Quality-of-life, CI hardening, dev-tooling, and observability release. No breaking changes to the public `subagent` tool surface. All changes ship behind the existing `pi install git:github.com/GeneGulanesJr/PiSubagent` distribution path.
+
 ### Added
 
-- Dependabot configuration for weekly npm dependency updates (`.github/dependabot.yml`).
-- Contributor documentation (`CONTRIBUTING.md`).
+- Streaming progress with per-agent latest message text (`src/output.ts:progressSnippet` + `PROGRESS_THROTTLE_MS = 150`). Parallel dispatch now surfaces per-agent activity live instead of a static counter (`commit 83c5ebf`).
+- `/pisubagent-doctor` slash command (`prompts/pisubagent-doctor.md`) — runs 6 read-only diagnostics (Node version, tests, agents discovered, audit, settings registration, smoke test) and reports a structured remediation plan.
+- macOS added to CI matrix (`.github/workflows/test.yml`).
+- `actions/dependency-review-action@v4` on pull requests — fails PRs that introduce moderate+ severity vulnerabilities (`.github/workflows/dependency-review.yml`).
+- GitHub CodeQL weekly + per-push + per-PR scan with SARIF upload to the Security tab (`.github/workflows/codeql.yml`).
+- `docs/adr/` with first three Architecture Decision Records:
+  - `0001-per-batch-concurrency-cap.md` — why `runParallel` uses a per-batch loop.
+  - `0002-truncate-parallel-output.md` — why `PER_TASK_OUTPUT_CAP` is enforced on `runParallel` summaries and on `{previous}` substitution in `runChain`.
+  - `0003-streaming-progress-throttle.md` — why `progressSnippet` was added to `src/output.ts` and why the throttle is 150 ms.
+- `SUPPORT.md` — how to ask questions, file bugs, report security issues.
+- `.github/CODEOWNERS` — `@GeneGulanesJr` as default reviewer for the whole repo.
+- `examples/` directory with sample agent frontmatter and runnable `subagent(...)` invocations for each of the three modes.
+- StrykerJS v10 mutation testing (`stryker.config.mjs` + `npm run mutate`). Baseline score 0.23% (low because existing tests are heavy on string-equality / snapshot matches — score will lift as behavioral tests land).
+- `.nvmrc` + `.node-version` (Node 22 pin for nvm / asdf / mise / volta users).
+- Dependabot weekly schedule for npm (`dependabot.yml`).
+- `CONTRIBUTING.md` — contributor guide.
+- Issue templates (`.github/ISSUE_TEMPLATE/{bug,feature}.yml`) and PR template.
+- `SECURITY.md` with private disclosure email + 7-day response SLA.
+- EditorConfig (`.editorconfig`) + `.gitattributes`.
+- `PER_TASK_OUTPUT_CAP = 50 * 1024` enforced in `runParallel` summaries.
+- `runTimeoutMs` option on `SubprocessRunnerOptions` (no default; fires SIGTERM → SIGKILL after the configured window).
 
 ### Changed
 
-- Enforce `PER_TASK_OUTPUT_CAP` in parallel and chain modes (dispatch output cap).
-- Subprocess hardening: stdout/stderr buffer cap, run timeout, tmpdir cleanup, `onUpdate` exception guard, and malformed JSONL logging.
-- `engines` pin: Node `>=22`.
+- `vitest` 3.2.7 → 5.0.1, `@vitest/coverage-v8` 3.2.7 → 5.0.1, `@types/node` ^20 → ^22 (vitest 5 peer dep).
+- `engines.node` pinned to `>= 22`.
+- `Dockerfile` `FROM node:20-bookworm-slim` → `FROM node:22-bookworm-slim` to match the engines pin.
+- `src/dispatch.ts` (394 LOC) split into focused modules under `src/dispatch/{detect-mode,limits,internal,progress,types,execute,run-single,run-parallel,run-chain,index}.ts`. Shim file preserved at `src/dispatch.ts` for NodeNext back-compat.
+- `src/runner/subprocess.ts` (354 LOC) split into focused modules under `src/runner/subprocess/{invocation,prompt-file,kill-abort,jsonl,runner,index}.ts`. Shim file preserved at `src/runner/subprocess.ts`.
+- `vitest.config.ts` — bumped `hookTimeout` to 60 s + `clearMocks: false` (vitest 5 default change).
+- `src/runner/subprocess.ts:parseJsonlEvents` return type widened from `IterableIterator<JsonlEvent>` to `Iterable<JsonlEvent>` (right public abstraction).
+- CI workflow adds `npm run build` step before `npm test`, and runs tests with `--coverage` to enforce the vitest 80/80/80/70 thresholds.
+- Auto-release workflow `.github/workflows/release.yml` triggered on `v*` tag push.
+
+### Fixed
+
+- Issue #1 (Drift): `MAX_CONCURRENCY = 4` was advertised but unenforced — `runParallel` now uses a per-batch loop (`commit 940695e`).
+- Issue #1: `execute()` denial path hardcoded `mode: "single"` — now uses the detected mode so parallel/chain consumers get accurate detail (`commit 940695e`).
+- Issue #1: `AgentScope` fallthrough silently loaded all three sources for unknown values — now explicit (project / user / both) (`commit 940695e`).
+- SubprocessRunner hardening: stdout/stderr buffer cap (1 MB, drop-and-warn on overflow), `runTimeoutMs`, `fs.rmSync(recursive)` tmpdir cleanup, `onUpdate` exception guard, malformed-JSONL stderr summary.
+- Windows cold-import flake: `vitest.config.ts:hookTimeout` bumped to 60 s.
+- `Iterable<JsonlEvent>` spread under lint-staged's per-file `tsc --noEmit` (TS2802): removed per-file `tsc` from `.lintstagedrc.json` in favor of full-project typecheck in CI + local `npm run typecheck`.
+
+### Security
+
+- `npm audit`: 0 vulnerabilities (was 3 moderate `@vitest/mocker` advisories before vitest 5 bump; cleared by `a1011f3`).
+- GitHub CodeQL `security-extended + security-and-quality` queries on every push + weekly.
+- `dependency-review-action` flags new moderate+ vulnerabilities at PR time.
+- `SECURITY.md` documents private disclosure flow.
+
+## [0.1.1] - 2026-09-23
+
+### Fixed
+
+- Windows cold-import flake: `vitest.config.ts:hookTimeout` bumped to 60 s (`f17db55`).
+- `MAX_CONCURRENCY = 4` advertised but unenforced (`4d4612c`).
+- `execute()` denial path hardcoded `mode: "single"` (`4d4612c`).
+- `AgentScope` fallthrough silently loaded all sources for unknown values (`4d4612c`).
+
+### Changed
+
+- `vitest` 3.2.7 → 5.0.1 (`a1011f3`).
+- GitHub Actions CI on linux + windows (`af8b28c`).
 
 ## [0.1.0] - 2026-09-22
 
