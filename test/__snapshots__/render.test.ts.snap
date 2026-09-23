@@ -1,0 +1,36 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`render snapshots > renderCall: chain mode snapshot 1`] = `
+"[toolTitle]**subagent **[/toolTitle][accent]chain (2 steps)[/accent][muted] [user][/muted]
+  [muted]1.[/muted] [accent]planner[/accent][dim] plan using[/dim]
+  [muted]2.[/muted] [accent]worker[/accent][dim] execute plan[/dim]"
+`;
+
+exports[`render snapshots > renderCall: parallel mode snapshot 1`] = `
+"[toolTitle]**subagent **[/toolTitle][accent]parallel (2 tasks)[/accent][muted] [user][/muted]
+  [accent]a[/accent][dim] first task[/dim]
+  [accent]b[/accent][dim] second task[/dim]"
+`;
+
+exports[`render snapshots > renderCall: single mode snapshot 1`] = `
+"[toolTitle]**subagent **[/toolTitle][accent]scout[/accent][muted] [user][/muted]
+  [dim]find auth code[/dim]"
+`;
+
+exports[`render snapshots > renderResult: parallel done-with-failure snapshot 1`] = `
+"[error]✗[/error] [toolTitle]**parallel**[/toolTitle] [accent]1/2[/accent]
+  [success]✓[/success] [accent]a[/accent][muted] done[/muted]
+  [error]✗[/error] [accent]b[/accent][muted] failed [error][/muted]"
+`;
+
+exports[`render snapshots > renderResult: parallel partial mode snapshot 1`] = `
+"[accent]◐[/accent] [toolTitle]**parallel**[/toolTitle] [accent]1/2[/accent]
+  [accent]◐[/accent] [accent]planner[/accent][muted]: reviewing src/dispatch.ts[/muted]
+  [success]✓[/success] [accent]scout[/accent][muted] done[/muted]"
+`;
+
+exports[`render snapshots > renderResult: single running agent snapshot 1`] = `
+"[accent]◐[/accent] [toolTitle]**scout**[/toolTitle][muted] (user)[/muted][muted] running…[/muted]
+[toolOutput]analyzing files[/toolOutput]
+[dim]sonnet[/dim]"
+`;

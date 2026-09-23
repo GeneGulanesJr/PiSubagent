@@ -212,3 +212,97 @@ describe('renderResult', () => {
     expect(r).toBe('nothing ran');
   });
 });
+
+describe('render snapshots', () => {
+  it('renderCall: single mode snapshot', () => {
+    const t = renderCall({ agent: 'scout', task: 'find auth code' }, theme as never);
+    expect(t).toMatchSnapshot();
+  });
+
+  it('renderCall: parallel mode snapshot', () => {
+    const t = renderCall(
+      {
+        tasks: [
+          { agent: 'a', task: 'first task' },
+          { agent: 'b', task: 'second task' },
+        ],
+      },
+      theme as never,
+    );
+    expect(t).toMatchSnapshot();
+  });
+
+  it('renderCall: chain mode snapshot', () => {
+    const t = renderCall(
+      {
+        chain: [
+          { agent: 'planner', task: 'plan using {previous}' },
+          { agent: 'worker', task: 'execute plan' },
+        ],
+      },
+      theme as never,
+    );
+    expect(t).toMatchSnapshot();
+  });
+
+  it('renderResult: single running agent snapshot', () => {
+    const r = renderResult(
+      {
+        content: [{ type: 'text', text: 'live' }],
+        details: details('single', [
+          makeResult({
+            running: true,
+            messages: [
+              {
+                role: 'assistant' as const,
+                content: [{ type: 'text' as const, text: 'analyzing files' }],
+              },
+            ] as unknown as Message[],
+          }),
+        ]),
+      },
+      { expanded: false, isPartial: true },
+      theme as never,
+    );
+    expect(r).toMatchSnapshot();
+  });
+
+  it('renderResult: parallel partial mode snapshot', () => {
+    const r = renderResult(
+      {
+        content: [{ type: 'text', text: 'live' }],
+        details: details('parallel', [
+          makeResult({
+            agent: 'planner',
+            running: true,
+            messages: [
+              {
+                role: 'assistant' as const,
+                content: [{ type: 'text' as const, text: 'reviewing src/dispatch.ts' }],
+              },
+            ] as unknown as Message[],
+          }),
+          makeResult({ agent: 'scout' }),
+        ]),
+      },
+      { expanded: false, isPartial: true },
+      theme as never,
+    );
+    expect(r).toMatchSnapshot();
+  });
+
+  it('renderResult: parallel done-with-failure snapshot', () => {
+    const r = renderResult(
+      {
+        content: [{ type: 'text', text: 'batch' }],
+        details: details('parallel', [
+          makeResult({ agent: 'a' }),
+          makeResult({ agent: 'b', exitCode: 1, stopReason: 'error', errorMessage: 'model 404' }),
+        ]),
+      },
+      { expanded: false },
+      theme as never,
+    );
+    expect(r).toMatchSnapshot();
+  });
+});
