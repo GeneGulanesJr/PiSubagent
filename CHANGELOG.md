@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-09-23
+
+Test-infrastructure patch. No public-API or runtime changes — only test coverage for previously-uncovered decision points and integration paths. All 59 new tests pass; existing 126 tests unchanged.
+
 ### Added
 
 - Behavioral tests for uncovered dispatch decision points: `test/dispatch-behavioral.test.ts` (19 tests covering `runChain` short-circuit on step failure, `runParallel` `MAX_PARALLEL_TASKS` boundary, `runParallel` partial-failure surfacing, `runSingle` failure mode, `execute()` lookup fallback for unknown agent names, `detectMode` single-mode `&&` requirement edges, per-task `cwd` override, multi-batch concurrency cap).
