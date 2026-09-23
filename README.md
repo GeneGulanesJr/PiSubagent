@@ -37,6 +37,11 @@ Use `chain` for scout → plan → worker flows (bundled `/implement`,
 `parallel` for independent recon across a codebase or fan-out reviews. Use
 `single` for exactly one job.
 
+The bundled `/pisubagent-doctor` slash command (added in v0.1.2) runs
+6 read-only diagnostics (Node version, tests, agents discovered, audit,
+settings registration, smoke test) and reports a structured remediation
+plan. Reach for it before opening an issue.
+
 ## Limits
 
 - `MAX_PARALLEL_TASKS = 8` — `tasks[]` length must be ≤ 8.
