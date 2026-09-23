@@ -234,6 +234,52 @@ describe('live progress through execute()', () => {
     expect(calls[1].input.resolvedTask).toContain('a done');
   });
 
+  it('parallel mode: snapshot text surfaces the latest message per running agent (not just a count)', async () => {
+    const { runner } = makeRunner(async (call) => {
+      if (call.input.agent.name === 'a') {
+        // Done quickly; emits once with its final text.
+        call.onUpdate?.(makeResult('a', 'a final'));
+        return makeResult('a', 'a final');
+      }
+      // Agent b emits partial messages but never finishes within this test.
+      call.onUpdate?.(makeResult('b', 'starting b…'));
+      call.onUpdate?.(makeResult('b', 'still going on b'));
+      await sleep(60); // keep b 'running' long enough to observe
+      return makeResult('b', 'still going on b');
+    });
+
+    const spy = vi.fn();
+    const out = await execute(
+      {
+        tasks: [
+          { agent: 'a', task: 't1' },
+          { agent: 'b', task: 't2' },
+        ],
+      },
+      baseCtx({ onUpdate: spy, progressIntervalMs: 0 }),
+      AGENTS,
+      runner,
+    );
+
+    expect(out.isError).toBe(false);
+
+    // Find a snapshot where a was done and b was still running.
+    const liveSnapshot = spy.mock.calls.find((c) => {
+      const r = (c[0] as { details: SubagentDetails }).details.results;
+      return r.length === 2 && !r[0].running && r[1].running === true;
+    });
+    expect(liveSnapshot).toBeDefined();
+
+    const text = (liveSnapshot![0] as { content: Array<{ text: string }> }).content[0].text;
+    // Header counter
+    expect(text).toMatch(/Running 2 subagents… \(1\/2 done\)/);
+    // Per-agent lines with running / done markers AND latest message text
+    expect(text).toMatch(/a final/);
+    expect(text).toMatch(/still going on b/);
+    // b is the running one — its text appears with the ◐ icon, not ✓ done.
+    expect(text).toMatch(/◐ b:/);
+  });
+
   it('parallel mode: no crash and no emissions when onUpdate absent', async () => {
     const { runner } = makeRunner(async () => makeResult('a', 'ok'));
     const out = await execute({ tasks: [{ agent: 'a', task: 't' }] }, baseCtx(), AGENTS, runner);

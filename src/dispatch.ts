@@ -18,6 +18,7 @@ import {
   getResultOutput,
   formatTokens,
   truncateParallelOutput,
+  progressSnippet,
 } from './output.js';
 
 export const MAX_PARALLEL_TASKS = 8;
@@ -120,15 +121,29 @@ function progressLine(mode: Mode, results: readonly SingleResult[], total: numbe
   if (mode === 'single') {
     const r = results[0];
     if (!r) return 'Running…';
-    return r.running
-      ? `${r.agent}: running… (${r.messages.length} msg, ↓${formatTokens(r.usage.output)} tok)`
-      : `${r.agent}: done`;
+    if (!r.running) return `${r.agent}: done`;
+    const latest = progressSnippet(r.messages);
+    return `${r.agent}: ${latest} (${r.messages.length} msg, ↓${formatTokens(r.usage.output)} tok)`;
   }
   if (mode === 'parallel') {
-    return `Running ${total} subagent${total === 1 ? '' : 's'}… (${done}/${total} done)`;
+    const header = `Running ${total} subagent${total === 1 ? '' : 's'}… (${done}/${total} done)`;
+    const perAgent = results
+      .map((r) => {
+        const icon = r.running ? '◐' : r.exitCode === 0 ? '✓' : '✗';
+        const latest = progressSnippet(r.messages);
+        const runningTag = r.running ? '' : r.exitCode === 0 ? ' done' : ` failed`;
+        return `  ${icon} ${r.agent}: ${latest}${runningTag}`;
+      })
+      .join('\n');
+    return perAgent ? `${header}\n${perAgent}` : header;
   }
+  // chain: surface the current (last) step's latest text.
   const current = results[results.length - 1];
-  return `Step ${results.length}/${total}: ${current ? current.agent : '?'} running…`;
+  if (!current) return `Step 0/${total}: starting…`;
+  const latest = progressSnippet(current.messages);
+  return current.running
+    ? `Step ${results.length}/${total} ${current.agent}: ${latest} (${current.messages.length} msg, ↓${formatTokens(current.usage.output)} tok)`
+    : `Step ${results.length}/${total} ${current.agent}: done`;
 }
 
 type ProgressPayload = AgentToolResult<SubagentDetails>;
@@ -145,7 +160,7 @@ function snapshot(
   };
 }
 
-export const PROGRESS_THROTTLE_MS = 250;
+export const PROGRESS_THROTTLE_MS = 150;
 
 /**
  * Leading+trailing throttle over the tool-level onUpdate sink. First call fires

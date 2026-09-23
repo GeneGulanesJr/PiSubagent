@@ -5,6 +5,7 @@ import {
   formatToolCall,
   getFinalOutput,
   isFailedResult,
+  progressSnippet,
 } from './output.js';
 
 /**
@@ -144,7 +145,15 @@ function renderMultiResult(
       : isFailedResult(r)
         ? theme.fg('error', '✗')
         : theme.fg('success', '✓');
-    text += `\n  ${rIcon} ${theme.fg('accent', r.agent)}`;
+    // During streaming (isPartial && running), surface the agent's latest
+    // message text so the parent sees real activity per agent rather than
+    // just an icon + name. Done/failed agents get a short suffix instead.
+    const statusSuffix = r.running
+      ? `: ${progressSnippet(r.messages)}`
+      : r.exitCode === 0
+        ? ' done'
+        : ` failed${r.stopReason ? ` [${r.stopReason}]` : ''}`;
+    text += `\n  ${rIcon} ${theme.fg('accent', r.agent)}${theme.fg('muted', statusSuffix)}`;
   }
   return text;
 }

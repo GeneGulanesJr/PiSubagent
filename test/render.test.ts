@@ -171,6 +171,35 @@ describe('renderResult', () => {
     expect(r).toContain('b');
   });
 
+  it("parallel partial: surfaces the running agent's latest message text inline", () => {
+    const runningMessages = [
+      {
+        role: 'assistant' as const,
+        content: [{ type: 'text' as const, text: 'analyzing src/dispatch.ts…' }],
+      },
+    ] as unknown as Message[];
+    const r = renderResult(
+      {
+        content: [{ type: 'text', text: 'live' }],
+        details: details('parallel', [
+          makeResult({
+            agent: 'planner',
+            running: true,
+            messages: runningMessages,
+          }),
+          makeResult({ agent: 'scout' }),
+        ]),
+      },
+      { expanded: false, isPartial: true },
+      theme as never,
+    );
+    expect(r).toContain('◐');
+    expect(r).toContain('1/2');
+    expect(r).toContain('analyzing src/dispatch.ts');
+    expect(r).toContain('planner');
+    expect(r).toContain('scout');
+  });
+
   it('no results: returns content text', () => {
     const r = renderResult(
       {

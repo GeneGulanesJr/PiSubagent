@@ -128,6 +128,34 @@ export function getFinalOutput(messages: Message[]): string {
   return '';
 }
 
+/**
+ * Latest activity snippet for a running subagent result, suitable for a
+ * single-line progress display. Format precedence:
+ *   1. The last assistant text part (whitespace-collapsed, truncated).
+ *   2. The name of the most recent tool call as "→ toolName".
+ *   3. "(starting…)" if no assistant output yet.
+ */
+export const PROGRESS_SNIPPET_MAX = 120;
+
+export function progressSnippet(messages: readonly Message[]): string {
+  if (messages.length === 0) return '(starting…)';
+  const last = messages[messages.length - 1];
+  if (!last || last.role !== 'assistant') return '(starting…)';
+  for (let i = last.content.length - 1; i >= 0; i--) {
+    const part = last.content[i];
+    if (part.type === 'text' && part.text.trim()) {
+      const text = part.text.replace(/\s+/g, ' ').trim();
+      return text.length > PROGRESS_SNIPPET_MAX
+        ? `${text.slice(0, PROGRESS_SNIPPET_MAX - 1)}…`
+        : text;
+    }
+    if (part.type === 'toolCall') {
+      return `→ ${part.name}`;
+    }
+  }
+  return '(starting…)';
+}
+
 export function isFailedResult(result: SingleResult): boolean {
   return result.exitCode !== 0 || result.stopReason === 'error' || result.stopReason === 'aborted';
 }
