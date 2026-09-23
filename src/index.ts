@@ -5,7 +5,7 @@ import { Text } from '@earendil-works/pi-tui';
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import type { SubagentParams, SubagentDetails } from './types.js';
 import { resolveBundledAgentsDir, discoverAgents, type AgentScope } from './agents.js';
-import { execute, type DispatchContext, type ToolResultLike } from './dispatch.js';
+import { execute, type DispatchContext, type ToolResultLike } from './dispatch/index.js';
 import { renderCall, renderResult } from './render.js';
 
 const TaskItem = Type.Object({
