@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Discussions
+    url: https://github.com/GeneGulanesJr/PiSubagent/discussions
+    about: General questions and ideas
+  - name: Security issues
+    url: https://github.com/GeneGulanesJr/PiSubagent/blob/master/SECURITY.md
+    about: Report vulnerabilities privately (see SECURITY.md)
