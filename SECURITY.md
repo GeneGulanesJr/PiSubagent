@@ -13,6 +13,7 @@ Earlier versions are not maintained.
 **Please do not open a public GitHub issue for security problems.**
 
 Email **gulanesgene@gmail.com** with:
+
 - A short description of the issue
 - Reproduction steps or a proof-of-concept
 - Impact assessment (who is affected, what is the worst case)

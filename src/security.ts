@@ -1,4 +1,4 @@
-import type { SubagentParams, AgentConfig } from "./types.js";
+import type { SubagentParams, AgentConfig } from './types.js';
 
 export interface ConfirmationDecision {
   continue: boolean;
@@ -36,12 +36,12 @@ export async function confirmProjectAgentsIfNeeded(
     ui: { confirm: (title: string, message: string) => Promise<boolean> };
   },
 ): Promise<ConfirmationDecision> {
-  const scope = params.agentScope ?? "user";
-  if (scope === "user") return { continue: true, requestedProjectAgents: [] };
+  const scope = params.agentScope ?? 'user';
+  if (scope === 'user') return { continue: true, requestedProjectAgents: [] };
 
   const requestedNames = new Set(getRequestedAgentNames(params));
   const requestedProjectAgents = agents.filter(
-    (a) => requestedNames.has(a.name) && a.source === "project",
+    (a) => requestedNames.has(a.name) && a.source === 'project',
   );
 
   if (requestedProjectAgents.length === 0) {
@@ -60,10 +60,10 @@ export async function confirmProjectAgentsIfNeeded(
     return { continue: false, requestedProjectAgents };
   }
 
-  const names = requestedProjectAgents.map((a) => a.name).join(", ");
-  const sourceDir = "project .pi/agents directory";
+  const names = requestedProjectAgents.map((a) => a.name).join(', ');
+  const sourceDir = 'project .pi/agents directory';
   const ok = await ctx.ui.confirm(
-    "Run project-local agents?",
+    'Run project-local agents?',
     `Agents: ${names}\nSource: ${sourceDir}\n\nProject agents are repo-controlled. Only continue for trusted repositories.`,
   );
   return { continue: ok, requestedProjectAgents, sourceDir };

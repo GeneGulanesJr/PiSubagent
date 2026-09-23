@@ -1,12 +1,12 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi } from 'vitest';
 import {
   execute,
   MAX_CONCURRENCY,
   MAX_PARALLEL_TASKS,
   type DispatchContext,
-} from "../src/dispatch.js";
-import type { AgentRunner } from "../src/runner/runner.js";
-import type { AgentConfig, SingleResult } from "../src/types.js";
+} from '../src/dispatch.js';
+import type { AgentRunner } from '../src/runner/runner.js';
+import type { AgentConfig, SingleResult } from '../src/types.js';
 
 /** Test-controlled deferred promise; resolves manually. */
 function deferred<T>() {
@@ -19,24 +19,32 @@ function deferred<T>() {
 function makeFakeResult(agentName: string): SingleResult {
   return {
     agent: agentName,
-    agentSource: "user",
-    task: "t",
+    agentSource: 'user',
+    task: 't',
     exitCode: 0,
     messages: [],
-    stderr: "",
-    usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 1 },
-    model: "fake",
+    stderr: '',
+    usage: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      cost: 0,
+      contextTokens: 0,
+      turns: 1,
+    },
+    model: 'fake',
   };
 }
 
 /** Minimal bundled AgentConfig stub. */
 function agent(name: string): AgentConfig {
-  return { name, description: "", systemPrompt: "", source: "bundled", filePath: "" };
+  return { name, description: '', systemPrompt: '', source: 'bundled', filePath: '' };
 }
 
 /** Trivial trusted/bundled-only ctx so the project-agent gate doesn't fire. */
 const baseCtx = (over: Partial<DispatchContext> = {}): DispatchContext => ({
-  cwd: "/tmp",
+  cwd: '/tmp',
   hasUI: false,
   isProjectTrusted: () => true,
   ui: { confirm: async () => true },
@@ -64,7 +72,7 @@ const baseCtx = (over: Partial<DispatchContext> = {}): DispatchContext => ({
 // the file reads as an extension of the existing cap/denial tests.
 // ---------------------------------------------------------------------------
 
-describe("runParallel: parallel-batching regression (SubprocessRunner / dispatch)", () => {
+describe('runParallel: parallel-batching regression (SubprocessRunner / dispatch)', () => {
   it(`peak in-flight ≤ MAX_CONCURRENCY (=${MAX_CONCURRENCY}) under full MAX_PARALLEL_TASKS (=${MAX_PARALLEL_TASKS}) load`, async () => {
     // Barrier-driven peak counter, mirroring the "runParallel concurrency
     // cap" test in test/dispatch.test.ts. Here N=MAX_PARALLEL_TASKS exercises
@@ -76,7 +84,7 @@ describe("runParallel: parallel-batching regression (SubprocessRunner / dispatch
     const release = deferred<undefined>();
 
     const runner: AgentRunner = {
-      id: "subprocess",
+      id: 'subprocess',
       run: async (input) => {
         inFlight++;
         peak = Math.max(peak, inFlight);
@@ -92,8 +100,8 @@ describe("runParallel: parallel-batching regression (SubprocessRunner / dispatch
     };
 
     const N = MAX_PARALLEL_TASKS; // 8 → batch 1 of 4, batch 2 of 4
-    const tasks = Array.from({ length: N }, (_, i) => ({ agent: "a", task: `t${i}` }));
-    const agents: AgentConfig[] = [agent("a")];
+    const tasks = Array.from({ length: N }, (_, i) => ({ agent: 'a', task: `t${i}` }));
+    const agents: AgentConfig[] = [agent('a')];
 
     const executePromise = execute({ tasks }, baseCtx(), agents, runner);
     await batch1Full.promise;
@@ -109,11 +117,11 @@ describe("runParallel: parallel-batching regression (SubprocessRunner / dispatch
 
     expect(peak).toBe(MAX_CONCURRENCY); // cap held; never overshot across 2 batches
     expect(out.isError).toBe(false);
-    expect(out.details.mode).toBe("parallel");
+    expect(out.details.mode).toBe('parallel');
     expect(out.details.results).toHaveLength(N);
   });
 
-  it("8 tasks complete within a generous wall-time budget", async () => {
+  it('8 tasks complete within a generous wall-time budget', async () => {
     // Soft smoke test — catches accidental fully-sequential execution. If a
     // future refactor accidentally calls runner.run in a serial `for` loop
     // instead of Promise.all, wall time is roughly 8×PER_TASK_MS instead of
@@ -125,14 +133,14 @@ describe("runParallel: parallel-batching regression (SubprocessRunner / dispatch
     const BUDGET_MS = 5000;
 
     const runner: AgentRunner = {
-      id: "subprocess",
+      id: 'subprocess',
       run: async (input) => {
         await new Promise((r) => setTimeout(r, PER_TASK_MS));
         return makeFakeResult(input.agent.name);
       },
     };
-    const tasks = Array.from({ length: N }, (_, i) => ({ agent: "a", task: `t${i}` }));
-    const agents: AgentConfig[] = [agent("a")];
+    const tasks = Array.from({ length: N }, (_, i) => ({ agent: 'a', task: `t${i}` }));
+    const agents: AgentConfig[] = [agent('a')];
 
     const start = Date.now();
     const out = await execute({ tasks }, baseCtx(), agents, runner);
@@ -151,38 +159,34 @@ describe("runParallel: parallel-batching regression (SubprocessRunner / dispatch
     }
   });
 
-  it("result order is preserved across batches", async () => {
+  it('result order is preserved across batches', async () => {
     // 8 tasks each ask for a unique agent. Even if a future refactor lets
     // batch 2 complete before batch 1 in the wrong slot (e.g., by dropping
     // the inter-batch `await`), details.results must remain in input task
     // order so render / chain-downstream consumers see the right slot.
     const N = MAX_PARALLEL_TASKS;
-    const agents: AgentConfig[] = Array.from({ length: N }, (_, i) =>
-      agent(`name-${i}`),
-    );
+    const agents: AgentConfig[] = Array.from({ length: N }, (_, i) => agent(`name-${i}`));
     const tasks = Array.from({ length: N }, (_, i) => ({
       agent: `name-${i}`,
       task: `t${i}`,
     }));
 
     const runner: AgentRunner = {
-      id: "subprocess",
+      id: 'subprocess',
       run: async (input) => makeFakeResult(input.agent.name),
     };
 
     const out = await execute({ tasks }, baseCtx(), agents, runner);
 
     expect(out.isError).toBe(false);
-    expect(out.details.mode).toBe("parallel");
+    expect(out.details.mode).toBe('parallel');
     expect(out.details.results).toHaveLength(N);
 
     const agentNames = out.details.results.map((r) => r.agent);
-    expect(agentNames).toEqual(
-      Array.from({ length: N }, (_, i) => `name-${i}`),
-    );
+    expect(agentNames).toEqual(Array.from({ length: N }, (_, i) => `name-${i}`));
   });
 
-  it("execute() denial path: cancellation completes within wall-time budget", async () => {
+  it('execute() denial path: cancellation completes within wall-time budget', async () => {
     // Project-agent confirmation gate denies synchronously when hasUI=false
     // and the project is untrusted (src/security.ts: confirmProjectAgentsIfNeeded
     // — early return of `{ continue: false, ... }` after the hasUI check).
@@ -192,16 +196,16 @@ describe("runParallel: parallel-batching regression (SubprocessRunner / dispatch
     // where someone accidentally drops the synchronous gate in favor of an
     // awaited user prompt.
     const projectAgent: AgentConfig = {
-      name: "repo-reviewer",
-      description: "x",
-      systemPrompt: "",
-      source: "project",
-      filePath: "/fake/repo-reviewer.md",
+      name: 'repo-reviewer',
+      description: 'x',
+      systemPrompt: '',
+      source: 'project',
+      filePath: '/fake/repo-reviewer.md',
     };
     // `vi.fn()` defaults to a callable whose return type is permissive (any),
     // which suffices — the gate denies BEFORE calling confirm.
     const ctx: DispatchContext = {
-      cwd: "/tmp",
+      cwd: '/tmp',
       hasUI: false,
       isProjectTrusted: () => false,
       ui: { confirm: vi.fn() },
@@ -209,14 +213,14 @@ describe("runParallel: parallel-batching regression (SubprocessRunner / dispatch
 
     const start = Date.now();
     const out = await execute(
-      { agentScope: "project", tasks: [{ agent: "repo-reviewer", task: "x" }] },
+      { agentScope: 'project', tasks: [{ agent: 'repo-reviewer', task: 'x' }] },
       ctx,
       [projectAgent],
     );
     const elapsed = Date.now() - start;
 
     expect(out.isError).toBe(true);
-    expect(out.details.mode).toBe("parallel");
+    expect(out.details.mode).toBe('parallel');
     // Parallel-mode denial — matches the task's chosen shape; complements the
     // "denial → details.mode === 'parallel'" assertion in test/dispatch.test.ts
     // (issue #1, Bug 2 regression).

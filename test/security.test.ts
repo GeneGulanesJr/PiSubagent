@@ -1,6 +1,6 @@
-import { describe, it, expect, vi } from "vitest";
-import { confirmProjectAgentsIfNeeded } from "../src/security.js";
-import type { SubagentParams, AgentConfig } from "../src/types.js";
+import { describe, it, expect, vi } from 'vitest';
+import { confirmProjectAgentsIfNeeded } from '../src/security.js';
+import type { SubagentParams, AgentConfig } from '../src/types.js';
 
 type ConfirmFn = ReturnType<typeof vi.fn> & { mockResolvedValue: (v: boolean) => unknown };
 
@@ -8,7 +8,7 @@ function makeCtx(opts: { trusted?: boolean; hasUI?: boolean; confirmValue?: bool
   const confirm = vi.fn().mockResolvedValue(opts.confirmValue ?? true);
   return {
     ctx: {
-      cwd: "/tmp",
+      cwd: '/tmp',
       hasUI: opts.hasUI ?? true,
       isProjectTrusted: () => opts.trusted ?? false,
       ui: { confirm },
@@ -17,51 +17,51 @@ function makeCtx(opts: { trusted?: boolean; hasUI?: boolean; confirmValue?: bool
   };
 }
 
-function makeAgent(name: string, source: "user" | "project" | "bundled"): AgentConfig {
-  return { name, description: "x", systemPrompt: "", source, filePath: `/fake/${name}.md` };
+function makeAgent(name: string, source: 'user' | 'project' | 'bundled'): AgentConfig {
+  return { name, description: 'x', systemPrompt: '', source, filePath: `/fake/${name}.md` };
 }
 
-const baseParams: SubagentParams = { agent: "scout", task: "x" };
+const baseParams: SubagentParams = { agent: 'scout', task: 'x' };
 
-describe("confirmProjectAgentsIfNeeded", () => {
+describe('confirmProjectAgentsIfNeeded', () => {
   it("continues without prompting when scope is 'user'", async () => {
     const { ctx, confirm } = makeCtx({});
     const decision = await confirmProjectAgentsIfNeeded(
       baseParams,
-      [makeAgent("scout", "project")],
+      [makeAgent('scout', 'project')],
       ctx as never,
     );
     expect(decision.continue).toBe(true);
     expect(confirm).not.toHaveBeenCalled();
   });
 
-  it("skips prompt when project is trusted", async () => {
+  it('skips prompt when project is trusted', async () => {
     const { ctx, confirm } = makeCtx({ trusted: true });
     const decision = await confirmProjectAgentsIfNeeded(
-      { ...baseParams, agentScope: "both" },
-      [makeAgent("scout", "project")],
+      { ...baseParams, agentScope: 'both' },
+      [makeAgent('scout', 'project')],
       ctx as never,
     );
     expect(decision.continue).toBe(true);
     expect(confirm).not.toHaveBeenCalled();
   });
 
-  it("prompts on untrusted project and cancels when user declines", async () => {
+  it('prompts on untrusted project and cancels when user declines', async () => {
     const { ctx, confirm } = makeCtx({ confirmValue: false });
     const decision = await confirmProjectAgentsIfNeeded(
-      { ...baseParams, agentScope: "both" },
-      [makeAgent("scout", "project")],
+      { ...baseParams, agentScope: 'both' },
+      [makeAgent('scout', 'project')],
       ctx as never,
     );
     expect(decision.continue).toBe(false);
     expect(confirm).toHaveBeenCalledOnce();
   });
 
-  it("honors confirmProjectAgents: false to skip the prompt", async () => {
+  it('honors confirmProjectAgents: false to skip the prompt', async () => {
     const { ctx, confirm } = makeCtx({});
     const decision = await confirmProjectAgentsIfNeeded(
-      { ...baseParams, agentScope: "project", confirmProjectAgents: false },
-      [makeAgent("scout", "project")],
+      { ...baseParams, agentScope: 'project', confirmProjectAgents: false },
+      [makeAgent('scout', 'project')],
       ctx as never,
     );
     expect(decision.continue).toBe(true);
@@ -71,45 +71,45 @@ describe("confirmProjectAgentsIfNeeded", () => {
   it("does not prompt when only user-level agents are requested at scope 'both'", async () => {
     const { ctx, confirm } = makeCtx({});
     const decision = await confirmProjectAgentsIfNeeded(
-      { ...baseParams, agentScope: "both" },
-      [makeAgent("scout", "user")],
+      { ...baseParams, agentScope: 'both' },
+      [makeAgent('scout', 'user')],
       ctx as never,
     );
     expect(decision.continue).toBe(true);
     expect(confirm).not.toHaveBeenCalled();
   });
 
-  it("collects project agents from parallel tasks and chain steps", async () => {
+  it('collects project agents from parallel tasks and chain steps', async () => {
     const { ctx, confirm } = makeCtx({ confirmValue: false });
     const agents = [
-      makeAgent("scout", "user"),
-      makeAgent("repo-reviewer", "project"),
-      makeAgent("repo-planner", "project"),
+      makeAgent('scout', 'user'),
+      makeAgent('repo-reviewer', 'project'),
+      makeAgent('repo-planner', 'project'),
     ];
     const decision = await confirmProjectAgentsIfNeeded(
       {
-        agentScope: "both",
+        agentScope: 'both',
         tasks: [
-          { agent: "scout", task: "a" },
-          { agent: "repo-reviewer", task: "b" },
+          { agent: 'scout', task: 'a' },
+          { agent: 'repo-reviewer', task: 'b' },
         ],
-        chain: [{ agent: "repo-planner", task: "c" }],
+        chain: [{ agent: 'repo-planner', task: 'c' }],
       },
       agents,
       ctx as never,
     );
     expect(decision.continue).toBe(false);
     expect(decision.requestedProjectAgents.map((a) => a.name).sort()).toEqual([
-      "repo-planner",
-      "repo-reviewer",
+      'repo-planner',
+      'repo-reviewer',
     ]);
   });
 
-  it("blocks (no crash) when no UI is available on untrusted project", async () => {
+  it('blocks (no crash) when no UI is available on untrusted project', async () => {
     const { ctx, confirm } = makeCtx({ hasUI: false });
     const decision = await confirmProjectAgentsIfNeeded(
-      { ...baseParams, agentScope: "project" },
-      [makeAgent("scout", "project")],
+      { ...baseParams, agentScope: 'project' },
+      [makeAgent('scout', 'project')],
       ctx as never,
     );
     expect(decision.continue).toBe(false);

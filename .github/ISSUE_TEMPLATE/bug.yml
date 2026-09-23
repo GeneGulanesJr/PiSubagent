@@ -1,6 +1,6 @@
 name: Bug Report
 description: Report a bug in the subagent tool.
-title: "[Bug]: "
+title: '[Bug]: '
 labels:
   - bug
 
@@ -50,7 +50,7 @@ body:
         - parallel
         - chain
         - all
-        - "not sure"
+        - 'not sure'
     validations:
       required: true
 

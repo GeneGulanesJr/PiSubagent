@@ -26,11 +26,11 @@ Ask Pi to use the `subagent` tool:
 
 ## Modes
 
-| Mode    | Shape                  | When to use                                                          | Concurrency                  |
-| ------- | ---------------------- | -------------------------------------------------------------------- | ---------------------------- |
-| single  | `{ agent, task }`      | One focused dispatch; parent only needs the final answer             | 1                            |
-| parallel| `{ tasks: [...] }`     | N independent jobs whose results don't depend on each other          | up to 4 in flight, ≤ 8 total |
-| chain   | `{ chain: [...] }`     | Sequential pipeline where each step feeds the next via `{previous}`  | 1 step at a time             |
+| Mode     | Shape              | When to use                                                         | Concurrency                  |
+| -------- | ------------------ | ------------------------------------------------------------------- | ---------------------------- |
+| single   | `{ agent, task }`  | One focused dispatch; parent only needs the final answer            | 1                            |
+| parallel | `{ tasks: [...] }` | N independent jobs whose results don't depend on each other         | up to 4 in flight, ≤ 8 total |
+| chain    | `{ chain: [...] }` | Sequential pipeline where each step feeds the next via `{previous}` | 1 step at a time             |
 
 Use `chain` for scout → plan → worker flows (bundled `/implement`,
 `/scout-and-plan`, `/implement-and-review` prompts wrap these). Use
@@ -88,14 +88,14 @@ when the project is untrusted. See `agents/` for full examples and
 
 ## Troubleshooting
 
-| Message                                                  | Meaning                                                                                                                           |
-| -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `Invalid parameters. Provide exactly one mode: …`        | Call had zero or more than one of `{agent, task}`, `{tasks}`, `{chain}`.                                                          |
-| `Canceled: project-local agents not approved.`           | User denied the prompt, or `hasUI === false` on an untrusted project. Pass `confirmProjectAgents: false` to skip when intentional. |
-| `Too many parallel tasks (N). Max is 8.`                 | `tasks.length > MAX_PARALLEL_TASKS`. Split into smaller batches.                                                                  |
-| `[Output truncated: N bytes omitted. …]`                 | A task's parent-facing summary exceeded `PER_TASK_OUTPUT_CAP`. Full output is preserved in `details.results[i].messages`.          |
-| `[subprocess: N malformed JSONL lines dropped]`          | The child `pi` process emitted lines that weren't valid JSONL events. Inspect the agent's prompt — usually stray print output.    |
-| `run timeout after Xms`                                  | `runTimeoutMs` was set and the run exceeded it. Raise the limit or shorten the task.                                              |
+| Message                                           | Meaning                                                                                                                            |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `Invalid parameters. Provide exactly one mode: …` | Call had zero or more than one of `{agent, task}`, `{tasks}`, `{chain}`.                                                           |
+| `Canceled: project-local agents not approved.`    | User denied the prompt, or `hasUI === false` on an untrusted project. Pass `confirmProjectAgents: false` to skip when intentional. |
+| `Too many parallel tasks (N). Max is 8.`          | `tasks.length > MAX_PARALLEL_TASKS`. Split into smaller batches.                                                                   |
+| `[Output truncated: N bytes omitted. …]`          | A task's parent-facing summary exceeded `PER_TASK_OUTPUT_CAP`. Full output is preserved in `details.results[i].messages`.          |
+| `[subprocess: N malformed JSONL lines dropped]`   | The child `pi` process emitted lines that weren't valid JSONL events. Inspect the agent's prompt — usually stray print output.     |
+| `run timeout after Xms`                           | `runTimeoutMs` was set and the run exceeded it. Raise the limit or shorten the task.                                               |
 
 ## Cancellation
 

@@ -3,24 +3,24 @@
 version: 2
 
 updates:
-  - package-ecosystem: "npm"
-    directory: "/"
+  - package-ecosystem: 'npm'
+    directory: '/'
     schedule:
-      interval: "weekly"
+      interval: 'weekly'
     groups:
-      - name: "dependencies"
+      - name: 'dependencies'
         applies-to: version-updates
         update-types:
-          - "minor"
-          - "patch"
-      - name: "dev-dependencies (major)"
+          - 'minor'
+          - 'patch'
+      - name: 'dev-dependencies (major)'
         applies-to: version-updates
         update-types:
-          - "major"
+          - 'major'
         patterns:
-          - "*"
+          - '*'
     open-pull-requests-limit: 5
     labels:
-      - "dependencies"
+      - 'dependencies'
     commit-message:
-      prefix: "deps"
+      prefix: 'deps'

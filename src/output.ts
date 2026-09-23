@@ -1,6 +1,6 @@
-import * as os from "node:os";
-import type { Message } from "@earendil-works/pi-ai";
-import type { UsageStats, SingleResult } from "./types.js";
+import * as os from 'node:os';
+import type { Message } from '@earendil-works/pi-ai';
+import type { UsageStats, SingleResult } from './types.js';
 
 export function formatTokens(count: number): string {
   if (count < 1000) return count.toString();
@@ -10,30 +10,30 @@ export function formatTokens(count: number): string {
 }
 
 export function truncateParallelOutput(output: string, capBytes: number): string {
-  const byteLength = Buffer.byteLength(output, "utf8");
+  const byteLength = Buffer.byteLength(output, 'utf8');
   if (byteLength <= capBytes) return output;
 
   let truncated = output.slice(0, capBytes);
-  while (Buffer.byteLength(truncated, "utf8") > capBytes) {
+  while (Buffer.byteLength(truncated, 'utf8') > capBytes) {
     truncated = truncated.slice(0, -1);
   }
-  const omitted = byteLength - Buffer.byteLength(truncated, "utf8");
+  const omitted = byteLength - Buffer.byteLength(truncated, 'utf8');
   return `${truncated}\n\n[Output truncated: ${omitted} bytes omitted. Full output preserved in tool details.]`;
 }
 
 export type DisplayItem =
-  | { type: "text"; text: string }
-  | { type: "toolCall"; name: string; args: Record<string, unknown> };
+  | { type: 'text'; text: string }
+  | { type: 'toolCall'; name: string; args: Record<string, unknown> };
 
 export function getDisplayItems(messages: Message[]): DisplayItem[] {
   const items: DisplayItem[] = [];
   for (const msg of messages) {
-    if (msg.role !== "assistant") continue;
+    if (msg.role !== 'assistant') continue;
     for (const part of msg.content) {
-      if (part.type === "text") items.push({ type: "text", text: part.text });
-      else if (part.type === "toolCall") {
+      if (part.type === 'text') items.push({ type: 'text', text: part.text });
+      else if (part.type === 'toolCall') {
         items.push({
-          type: "toolCall",
+          type: 'toolCall',
           name: part.name,
           args: part.arguments as Record<string, unknown>,
         });
@@ -45,7 +45,7 @@ export function getDisplayItems(messages: Message[]): DisplayItem[] {
 
 export function formatUsageStats(usage: UsageStats, model?: string): string {
   const parts: string[] = [];
-  if (usage.turns) parts.push(`${usage.turns} turn${usage.turns > 1 ? "s" : ""}`);
+  if (usage.turns) parts.push(`${usage.turns} turn${usage.turns > 1 ? 's' : ''}`);
   if (usage.input) parts.push(`↑${formatTokens(usage.input)}`);
   if (usage.output) parts.push(`↓${formatTokens(usage.output)}`);
   if (usage.cacheRead) parts.push(`R${formatTokens(usage.cacheRead)}`);
@@ -55,7 +55,7 @@ export function formatUsageStats(usage: UsageStats, model?: string): string {
     parts.push(`ctx:${formatTokens(usage.contextTokens)}`);
   }
   if (model) parts.push(model);
-  return parts.join(" ");
+  return parts.join(' ');
 }
 
 export function formatToolCall(
@@ -69,49 +69,49 @@ export function formatToolCall(
   };
 
   switch (toolName) {
-    case "bash": {
-      const command = (args.command as string) || "...";
+    case 'bash': {
+      const command = (args.command as string) || '...';
       const preview = command.length > 60 ? `${command.slice(0, 60)}...` : command;
-      return themeFg("muted", "$ ") + themeFg("toolOutput", preview);
+      return themeFg('muted', '$ ') + themeFg('toolOutput', preview);
     }
-    case "read": {
-      const rawPath = (args.file_path || args.path || "...") as string;
-      return themeFg("muted", "read ") + themeFg("accent", shortenPath(rawPath));
+    case 'read': {
+      const rawPath = (args.file_path || args.path || '...') as string;
+      return themeFg('muted', 'read ') + themeFg('accent', shortenPath(rawPath));
     }
-    case "write": {
-      const rawPath = (args.file_path || args.path || "...") as string;
-      return themeFg("muted", "write ") + themeFg("accent", shortenPath(rawPath));
+    case 'write': {
+      const rawPath = (args.file_path || args.path || '...') as string;
+      return themeFg('muted', 'write ') + themeFg('accent', shortenPath(rawPath));
     }
-    case "edit": {
-      const rawPath = (args.file_path || args.path || "...") as string;
-      return themeFg("muted", "edit ") + themeFg("accent", shortenPath(rawPath));
+    case 'edit': {
+      const rawPath = (args.file_path || args.path || '...') as string;
+      return themeFg('muted', 'edit ') + themeFg('accent', shortenPath(rawPath));
     }
-    case "ls": {
-      const rawPath = (args.path || ".") as string;
-      return themeFg("muted", "ls ") + themeFg("accent", shortenPath(rawPath));
+    case 'ls': {
+      const rawPath = (args.path || '.') as string;
+      return themeFg('muted', 'ls ') + themeFg('accent', shortenPath(rawPath));
     }
-    case "find": {
-      const pattern = (args.pattern || "*") as string;
-      const rawPath = (args.path || ".") as string;
+    case 'find': {
+      const pattern = (args.pattern || '*') as string;
+      const rawPath = (args.path || '.') as string;
       return (
-        themeFg("muted", "find ") +
-        themeFg("accent", pattern) +
-        themeFg("dim", ` in ${shortenPath(rawPath)}`)
+        themeFg('muted', 'find ') +
+        themeFg('accent', pattern) +
+        themeFg('dim', ` in ${shortenPath(rawPath)}`)
       );
     }
-    case "grep": {
-      const pattern = (args.pattern || "") as string;
-      const rawPath = (args.path || ".") as string;
+    case 'grep': {
+      const pattern = (args.pattern || '') as string;
+      const rawPath = (args.path || '.') as string;
       return (
-        themeFg("muted", "grep ") +
-        themeFg("accent", `/${pattern}/`) +
-        themeFg("dim", ` in ${shortenPath(rawPath)}`)
+        themeFg('muted', 'grep ') +
+        themeFg('accent', `/${pattern}/`) +
+        themeFg('dim', ` in ${shortenPath(rawPath)}`)
       );
     }
     default: {
       const argsStr = JSON.stringify(args);
       const preview = argsStr.length > 50 ? `${argsStr.slice(0, 50)}...` : argsStr;
-      return themeFg("accent", toolName) + themeFg("dim", ` ${preview}`);
+      return themeFg('accent', toolName) + themeFg('dim', ` ${preview}`);
     }
   }
 }
@@ -119,22 +119,22 @@ export function formatToolCall(
 export function getFinalOutput(messages: Message[]): string {
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i];
-    if (msg.role === "assistant") {
+    if (msg.role === 'assistant') {
       for (const part of msg.content) {
-        if (part.type === "text") return part.text;
+        if (part.type === 'text') return part.text;
       }
     }
   }
-  return "";
+  return '';
 }
 
 export function isFailedResult(result: SingleResult): boolean {
-  return result.exitCode !== 0 || result.stopReason === "error" || result.stopReason === "aborted";
+  return result.exitCode !== 0 || result.stopReason === 'error' || result.stopReason === 'aborted';
 }
 
 export function getResultOutput(result: SingleResult): string {
   if (isFailedResult(result)) {
-    return result.errorMessage || result.stderr || getFinalOutput(result.messages) || "(no output)";
+    return result.errorMessage || result.stderr || getFinalOutput(result.messages) || '(no output)';
   }
-  return getFinalOutput(result.messages) || "(no output)";
+  return getFinalOutput(result.messages) || '(no output)';
 }

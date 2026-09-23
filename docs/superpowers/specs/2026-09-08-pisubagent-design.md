@@ -7,32 +7,33 @@
 
 ## Decisions Recorded (from brainstorming)
 
-| Q | Decision | Reasoning |
-|---|---|---|
-| Q1 — Architecture | **Subprocess backend for v1**, swappable via `AgentRunner` interface | Lowest time-to-working; preserves upstream-proven path; in-process backend is a v2 swap inside one interface, not a rewrite. |
-| Q2 — Skill integration | **Fork to new skill `pi-subagent-driven-development`**; keep existing merged `subagent-driven-development` untouched (user actively uses it in other harnesses) | User confirmed they use the merged skill across Claude Code/Codex; in-place replace would break that path. New skill is Pi-specific. |
-| Q3 — Skill rewrite timing | **Phase 4** (after PiSubagent is built and verified) | Verification gate earlier; once Phase 5 ships, skill guidance matches tool from day one of usage. |
-| Q4 — Default agent roster | **Four ships-with agents** (`scout` / `planner` / `reviewer` / `worker`) from upstream example | Start with proven defaults; iterate later. |
-| Q5 — License | **MIT** | User preference. |
-| Q6 — `pi install` asset behavior | **Verified** (see Q6 Verification below) — prompts + skills auto-load via package conventions; agents must be extension-discovered | Per `docs/packages.md` and `docs/prompt-templates.md` in the installed `@earendil-works/pi-coding-agent` package. |
-| Repo location | **`~/Documents/GulanesKorp/PiSubagent/`** | Matches user's house style (PiArgus, PiNyx, PiStats, PiGen, PiSkills, PiMemoryExtension all under `GulanesKorp/`). |
-| Distribution | **npm pi-package + GitHub + `git:` install in `settings.json`**, NOT local copy | Memory #1328 explicitly switched the user's `memory-layer` from local to git-package; memory #592 explicitly deleted a local duplicate after promoting PiArgus. |
-| Upstream handling | **Fork, do not symlink** upstream example | Risk of upstream drift; ensures v1 hardening deltas stick; aligns with "PiArgus is canonical (replace-in-place of old local browser/)" pattern from memory #592. |
-| v2 In-Process backend | Interface-only stub in v1; revisit after Aurex SDK-pattern verification | Cannot lean on unverified memory; `AgentRunner` swap is the refactor boundary. |
+| Q                                | Decision                                                                                                                                                        | Reasoning                                                                                                                                                        |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Q1 — Architecture                | **Subprocess backend for v1**, swappable via `AgentRunner` interface                                                                                            | Lowest time-to-working; preserves upstream-proven path; in-process backend is a v2 swap inside one interface, not a rewrite.                                     |
+| Q2 — Skill integration           | **Fork to new skill `pi-subagent-driven-development`**; keep existing merged `subagent-driven-development` untouched (user actively uses it in other harnesses) | User confirmed they use the merged skill across Claude Code/Codex; in-place replace would break that path. New skill is Pi-specific.                             |
+| Q3 — Skill rewrite timing        | **Phase 4** (after PiSubagent is built and verified)                                                                                                            | Verification gate earlier; once Phase 5 ships, skill guidance matches tool from day one of usage.                                                                |
+| Q4 — Default agent roster        | **Four ships-with agents** (`scout` / `planner` / `reviewer` / `worker`) from upstream example                                                                  | Start with proven defaults; iterate later.                                                                                                                       |
+| Q5 — License                     | **MIT**                                                                                                                                                         | User preference.                                                                                                                                                 |
+| Q6 — `pi install` asset behavior | **Verified** (see Q6 Verification below) — prompts + skills auto-load via package conventions; agents must be extension-discovered                              | Per `docs/packages.md` and `docs/prompt-templates.md` in the installed `@earendil-works/pi-coding-agent` package.                                                |
+| Repo location                    | **`~/Documents/GulanesKorp/PiSubagent/`**                                                                                                                       | Matches user's house style (PiArgus, PiNyx, PiStats, PiGen, PiSkills, PiMemoryExtension all under `GulanesKorp/`).                                               |
+| Distribution                     | **npm pi-package + GitHub + `git:` install in `settings.json`**, NOT local copy                                                                                 | Memory #1328 explicitly switched the user's `memory-layer` from local to git-package; memory #592 explicitly deleted a local duplicate after promoting PiArgus.  |
+| Upstream handling                | **Fork, do not symlink** upstream example                                                                                                                       | Risk of upstream drift; ensures v1 hardening deltas stick; aligns with "PiArgus is canonical (replace-in-place of old local browser/)" pattern from memory #592. |
+| v2 In-Process backend            | Interface-only stub in v1; revisit after Aurex SDK-pattern verification                                                                                         | Cannot lean on unverified memory; `AgentRunner` swap is the refactor boundary.                                                                                   |
 
 ## Q6 Verification — `pi install` Asset Behavior
 
 Verified by reading `docs/packages.md` and `docs/prompt-templates.md` in the installed `@earendil-works/pi-coding-agent` package:
 
-| Resource | Auto-loaded by Pi from package? | PiSubagent handling |
-|---|---|---|
-| Extensions (.ts/.js) | Yes — via `pi.extensions` manifest or `extensions/` convention | Register `src/index.ts` via `pi.extensions: ["./src/index.ts"]` |
-| Skills (SKILL.md) | Yes — via `pi.skills` manifest or `skills/` convention | Ship new `pi-subagent-driven-development/SKILL.md` under `skills/` convention directory; auto-loaded post-install |
-| Prompt templates (*.md) | Yes — via `pi.prompts` manifest or `prompts/` convention | Ship `prompts/{implement,scout-and-plan,implement-and-review}.md`; auto-loaded post-install |
-| Themes (.json) | Yes — via `pi.themes` manifest or `themes/` convention | Out of scope for PiSubagent |
-| **Agents (*.md)** | **NO** — agents are NOT a first-class Pi resource. `~/.pi/agent/agents/*.md` is a fixed path the extension itself must discover | `agents.ts` discovers from BOTH the package's bundled `agents/*.md` AND `~/.pi/agent/agents/*.md` (user-level override). No install step, no postinstall script needed. |
+| Resource                | Auto-loaded by Pi from package?                                                                                                 | PiSubagent handling                                                                                                                                                     |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Extensions (.ts/.js)    | Yes — via `pi.extensions` manifest or `extensions/` convention                                                                  | Register `src/index.ts` via `pi.extensions: ["./src/index.ts"]`                                                                                                         |
+| Skills (SKILL.md)       | Yes — via `pi.skills` manifest or `skills/` convention                                                                          | Ship new `pi-subagent-driven-development/SKILL.md` under `skills/` convention directory; auto-loaded post-install                                                       |
+| Prompt templates (*.md) | Yes — via `pi.prompts` manifest or `prompts/` convention                                                                        | Ship `prompts/{implement,scout-and-plan,implement-and-review}.md`; auto-loaded post-install                                                                             |
+| Themes (.json)          | Yes — via `pi.themes` manifest or `themes/` convention                                                                          | Out of scope for PiSubagent                                                                                                                                             |
+| **Agents (\*.md)**      | **NO** — agents are NOT a first-class Pi resource. `~/.pi/agent/agents/*.md` is a fixed path the extension itself must discover | `agents.ts` discovers from BOTH the package's bundled `agents/*.md` AND `~/.pi/agent/agents/*.md` (user-level override). No install step, no postinstall script needed. |
 
 **Implications for the migration plan:**
+
 - Phases 2-3 ship the package with `agents/`, `prompts/`, `skills/` directories as convention directories.
 - Phase 5 install is `git:github.com/genegulanesjr/PiSubagent` in settings.json + `pi install`. No manual symlink steps. The user can override bundled agents by dropping same-name files in `~/.pi/agent/agents/`.
 - The existing merged `subagent-driven-development/SKILL.md` stays untouched (per Q2 fork decision).
@@ -149,6 +150,7 @@ PiSubagent/
 ```
 
 **File responsibilities (each owns one concern):**
+
 - `index.ts`: tool registration only; routes to dispatch
 - `dispatch.ts`: orchestration only (no spawning, no parsing, no rendering)
 - `agents.ts`: agent file parsing only (no I/O beyond discovery)
@@ -167,6 +169,7 @@ The `subagent` tool registered in `index.ts`:
 **Tool name**: `subagent`
 **Label**: `Subagent`
 **Description** (joined string in registration):
+
 > "Delegate tasks to specialized subagents with isolated context. Modes: single (agent + task), parallel (tasks array), chain (sequential with {previous} placeholder). Default agent scope is 'user' (from ~/.pi/agent/agents). To enable project-local agents in .pi/agents, set agentScope: 'both' (or 'project')."
 
 **Parameters** (TypeBox):
@@ -197,11 +200,11 @@ YAML frontmatter + body (body = system prompt):
 
 ```markdown
 ---
-name: my-agent            # required, unique within scope
+name: my-agent # required, unique within scope
 description: Free-text used by parent LLM to pick this agent.
-tools: read, bash         # optional: comma-separated string OR yaml list
-model: claude-sonnet-4-5  # optional: omit to inherit dispatching model's model
-thinkingLevel: low        # optional: "off" | "low" | "medium" | "high"; omit to inherit from parent
+tools: read, bash # optional: comma-separated string OR yaml list
+model: claude-sonnet-4-5 # optional: omit to inherit dispatching model's model
+thinkingLevel: low # optional: "off" | "low" | "medium" | "high"; omit to inherit from parent
 ---
 
 System prompt goes here. Multi-line. Body is appended verbatim to pi's
@@ -209,6 +212,7 @@ system prompt at agent boot.
 ```
 
 **Locations:**
+
 - `~/.pi/agent/agents/*.md` — user-level (always loaded when `agentScope: "user"` or `"both"`)
 - `.pi/agents/*.md` — project-level (loaded only when `agentScope: "project"` or `"both"`)
 
@@ -238,9 +242,13 @@ subagent tool with specific parameters and modes.
 ```typescript
 export interface AgentRunner {
   /** Run a single agent dispatch; resolve with the agent's full event stream summarized into a SingleResult. */
-  run(input: AgentRunInput, signal?: AbortSignal, onUpdate?: OnUpdateCallback): Promise<SingleResult>;
+  run(
+    input: AgentRunInput,
+    signal?: AbortSignal,
+    onUpdate?: OnUpdateCallback,
+  ): Promise<SingleResult>;
   /** Logical runner id, used for diagnostics + future config gating. */
-  readonly id: "subprocess" | "in-process";
+  readonly id: 'subprocess' | 'in-process';
 }
 
 export interface AgentRunInput {
@@ -260,14 +268,14 @@ The runner interface is intentionally narrow — it owns agent execution only. D
 
 Mirrors the upstream `examples/extensions/subagent/index.ts` with these deliberate deltas (each is a v1 hardening pass):
 
-| Concern | Upstream behavior | v1 PiSubagent behavior | Rationale |
-|---|---|---|---|
-| CLI invocation | Resolved from `process.argv[1]` heuristic | Resolved from a single helper `resolvePiInvocation()` in `runner/subprocess.ts`, exported and unit-tested | Testability |
-| Prompt handoff | Temp file written via `withFileMutationQueue` per call | Same; reused across callsites via `runner/subprocess.ts` `writePromptFile(prompt): Promise<{dir, path}>` | Single source of truth |
-| Abort | `signal.addEventListener("abort", killProc, { once: true })` with 5s SIGKILL escalation | Same; factor `killOnAbort(proc, signal)` so test coverage can mock | Testability |
-| JSON event parsing | Line-buffer stdout, parse each `\n`-delimited line | Same; encapsulated in `parseJsonlEvents(stream): Observable<Event>` | Stream composition |
-| Exit codes | Pass-through | Pass-through; runner also emits `stopReason: "aborted"` on signal, `"error"` on non-zero exit | Match v1 error contract |
-| Tool call formatting | Inline `formatToolCall` in `index.ts` | Extracted into `output.ts` (shared with `renderResult`) | Single formatting source |
+| Concern              | Upstream behavior                                                                       | v1 PiSubagent behavior                                                                                    | Rationale                |
+| -------------------- | --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ------------------------ |
+| CLI invocation       | Resolved from `process.argv[1]` heuristic                                               | Resolved from a single helper `resolvePiInvocation()` in `runner/subprocess.ts`, exported and unit-tested | Testability              |
+| Prompt handoff       | Temp file written via `withFileMutationQueue` per call                                  | Same; reused across callsites via `runner/subprocess.ts` `writePromptFile(prompt): Promise<{dir, path}>`  | Single source of truth   |
+| Abort                | `signal.addEventListener("abort", killProc, { once: true })` with 5s SIGKILL escalation | Same; factor `killOnAbort(proc, signal)` so test coverage can mock                                        | Testability              |
+| JSON event parsing   | Line-buffer stdout, parse each `\n`-delimited line                                      | Same; encapsulated in `parseJsonlEvents(stream): Observable<Event>`                                       | Stream composition       |
+| Exit codes           | Pass-through                                                                            | Pass-through; runner also emits `stopReason: "aborted"` on signal, `"error"` on non-zero exit             | Match v1 error contract  |
+| Tool call formatting | Inline `formatToolCall` in `index.ts`                                                   | Extracted into `output.ts` (shared with `renderResult`)                                                   | Single formatting source |
 
 **CLI flag composition per agent dispatch** (sequence matters — matches upstream `--mode json -p`):
 
@@ -284,6 +292,7 @@ pi \
 ```
 
 Notes:
+
 - `--append-system-prompt <tmp>` and `Task: <text>` are mutually exclusive with the upstream `-p` prompt content — the agent's full instruction is the prompt itself.
 - `--mode json` ensures streamed events are parseable JSONL on stdout.
 - `--no-session` prevents the dispatched `pi` from creating a `.pi` history folder.
@@ -293,18 +302,23 @@ Notes:
 
 ```typescript
 export class InProcessRunner implements AgentRunner {
-  readonly id = "in-process" as const;
+  readonly id = 'in-process' as const;
 
-  async run(_input: AgentRunInput, _signal?: AbortSignal, _onUpdate?: OnUpdateCallback): Promise<SingleResult> {
+  async run(
+    _input: AgentRunInput,
+    _signal?: AbortSignal,
+    _onUpdate?: OnUpdateCallback,
+  ): Promise<SingleResult> {
     throw new Error(
-      "InProcessRunner is v2; not implemented in PiSubagent v1. See " +
-      "~/Documents/GulanesKorp/PiSubagent/docs/superpowers/specs/2026-09-08-pisubagent-design.md §In-Process Backend"
+      'InProcessRunner is v2; not implemented in PiSubagent v1. See ' +
+        '~/Documents/GulanesKorp/PiSubagent/docs/superpowers/specs/2026-09-08-pisubagent-design.md §In-Process Backend',
     );
   }
 }
 ```
 
 **v2 spec (when implemented):**
+
 - Use `createAgentSession()` from `@earendil-works/pi-coding-agent` with `tools: agent.tools ?? [/* inherit from parent */]`
 - Inject the agent's system prompt via `systemPromptOverride` (or `--append-system-prompt` analog in SDK)
 - Subscribe to the same event types as the subprocess backend (`message_update`, `message_end`, `tool_result_end`, `agent_settled`)
@@ -321,20 +335,25 @@ The mode orchestrator. Pure of subprocess details.
 // Pseudocode of the validation+dispatch logic
 async function execute(params: SubagentParams, ctx: ExtensionContext): Promise<AgentToolResult> {
   const mode = detectMode(params); // returns "single" | "parallel" | "chain" | "invalid"
-  if (mode === "invalid") return invalidParamsError(discoverAgents(ctx.cwd, params.agentScope ?? "user"));
+  if (mode === 'invalid')
+    return invalidParamsError(discoverAgents(ctx.cwd, params.agentScope ?? 'user'));
 
   await security.confirmProjectAgentsIfNeeded(params, agents, ctx); // may short-circuit
   const runner = selectRunner(); // returns SubprocessRunner in v1
 
   switch (mode) {
-    case "single":   return runSingle(runner, params, ctx, signal, onUpdate);
-    case "parallel": return runParallel(runner, params, ctx, signal, onUpdate);
-    case "chain":    return runChain(runner, params, ctx, signal, onUpdate);
+    case 'single':
+      return runSingle(runner, params, ctx, signal, onUpdate);
+    case 'parallel':
+      return runParallel(runner, params, ctx, signal, onUpdate);
+    case 'chain':
+      return runChain(runner, params, ctx, signal, onUpdate);
   }
 }
 ```
 
 Limits (mirrors upstream; constants in `dispatch.ts`):
+
 - `MAX_PARALLEL_TASKS = 8`
 - `MAX_CONCURRENCY = 4`
 - `PER_TASK_OUTPUT_CAP = 50 * 1024` bytes for parent-facing parallel output
@@ -342,6 +361,7 @@ Limits (mirrors upstream; constants in `dispatch.ts`):
 Chain semantics: `{previous}` in any chain step's `task` is replaced with the preceding step's final assistant text. Stops at first failing step (matches upstream).
 
 **Abort-signal propagation:**
+
 - **Single mode:** parent signal aborts the single in-flight spawn. `killOnAbort(proc, signal)` fires; if `stopReason` resolves to `"aborted"` and exit happens, run returns with `exitCode: 0` and `stopReason: "aborted"`. Errors with the parent-tool result.
 - **Parallel mode:** parent signal aborts **all** in-flight spawns (the `mapWithConcurrencyLimit` helper watches the signal and calls `killOnAbort` on every running proc). Already-completed results stay in `details.results[]`; in-flight ones finalize as `stopReason: "aborted"`. Partial output is reported to parent.
 - **Chain mode:** parent signal aborts **the current step only**. The already-completed prior steps remain in `details.results[]` with their final outputs. The aborted current step is recorded as `stopReason: "aborted"`. Downstream steps do NOT execute.
@@ -356,11 +376,13 @@ Chain semantics: `{previous}` in any chain step's `task` is replaced with the pr
 ## Render Layer (`src/render.ts`)
 
 Theme-injected functions; no extension I/O of their own.
+
 - `renderCall(args, theme): Text` — formatted compact view (single / parallel / chain variants)
 - `renderResult(result, opts, theme): Text | Container` — collapsed and expanded views. Returns either a single `Text` (collapsed) or a `Container` with multiple children (expanded) per upstream Pi TUI convention.
 - All output formatting (token counts, tool call formatting, final-output markdown rendering) lives in `output.ts`.
 
 Constants:
+
 - `COLLAPSED_ITEM_COUNT = 10` — items shown in collapsed view
 
 ## Skill Integration
@@ -433,9 +455,7 @@ Per Q6 verification, Pi's package installer auto-loads `extensions/`, `skills/`,
 3. Register in `~/.pi/agent/settings.json`:
    ```json
    {
-     "packages": [
-       "git:github.com/genegulanesjr/PiSubagent"
-     ]
+     "packages": ["git:github.com/genegulanesjr/PiSubagent"]
    }
    ```
 4. Run `pi install` (or `pi install git:github.com/genegulanesjr/PiSubagent` directly). `pi update --all` afterwards will reconcile to the latest pinned ref.
@@ -452,15 +472,15 @@ The upstream `examples/extensions/subagent/` is **NOT** symlinked. PiSubagent is
 
 `vitest run` against:
 
-| Test file | Covers |
-|---|---|
-| `agents.test.ts` | frontmatter parsing (string and array tools), scope merging, project-dir walking, malformed file resilience (skip + warn), bundled-dir resolution from `import.meta.url` |
-| `dispatch.test.ts` | modeCount validation (zero modes, multiple modes), chain `{previous}` substitution, chain stop on failure, parallel concurrency limit, abort-signal propagation to all in-flight parallel spawns and to the current chain step |
+| Test file                   | Covers                                                                                                                                                                                                                                                  |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `agents.test.ts`            | frontmatter parsing (string and array tools), scope merging, project-dir walking, malformed file resilience (skip + warn), bundled-dir resolution from `import.meta.url`                                                                                |
+| `dispatch.test.ts`          | modeCount validation (zero modes, multiple modes), chain `{previous}` substitution, chain stop on failure, parallel concurrency limit, abort-signal propagation to all in-flight parallel spawns and to the current chain step                          |
 | `runner-subprocess.test.ts` | `resolvePiInvocation()` across `node` / `bun` / generic runtime cases; `killOnAbort()` SIGTERM-then-SIGKILL escalation with fake timers; CLI flag composition per H6; JSONL parsing of synthetic streams; `SingleResult` population from event sequence |
-| `security.test.ts` | `agentScope` switching, project-agent confirmation prompt behavior on trusted vs untrusted projects, `confirmProjectAgents: false` opt-out |
-| `output.test.ts` | `formatTokens()` edge cases, `truncateParallelOutput()` byte-boundary correctness, `getDisplayItems()` filtering |
-| `render.test.ts` | `renderCall` for single/parallel/chain variants, `renderResult` collapsed + expanded; theme injection; no I/O |
-| `index.test.ts` | tool registration metadata (name, label, description), parameter schema exposed via `parameters`, mock agent boot round-trip |
+| `security.test.ts`          | `agentScope` switching, project-agent confirmation prompt behavior on trusted vs untrusted projects, `confirmProjectAgents: false` opt-out                                                                                                              |
+| `output.test.ts`            | `formatTokens()` edge cases, `truncateParallelOutput()` byte-boundary correctness, `getDisplayItems()` filtering                                                                                                                                        |
+| `render.test.ts`            | `renderCall` for single/parallel/chain variants, `renderResult` collapsed + expanded; theme injection; no I/O                                                                                                                                           |
+| `index.test.ts`             | tool registration metadata (name, label, description), parameter schema exposed via `parameters`, mock agent boot round-trip                                                                                                                            |
 
 Mocking strategy: `runner/subprocess.ts` must take a `spawn: typeof spawn` injection so tests can replace it with a fake returning canned JSONL output. No live network or live `pi` subprocesses in unit tests.
 
@@ -500,6 +520,7 @@ Each phase ends with a write-up-to-the-user checkpoint. No phase begins until th
 I checked for `CONTEXT.md`, `CONTEXT-MAP.md`, and `docs/adr/` in candidate repos. None found in `PiArgus`, `PiNyx`, `PiStats`, or `PiGen`. The project-specific convention (per memory #770, #1328, #1622) is published npm pi-package with Dockerfile + vitest + GitHub repo + git-install in `settings.json`. PiSubagent follows that pattern exactly. No domain conflicts to resolve.
 
 Cross-cutting terms to watch as the project grows:
+
 - "subagent" / "sub-agent" / "sub agent" — spell consistently in code, comments, docs. Use `subagent` in identifiers (matches upstream).
 - "agent" — refers to a `*.md` definition; not to Pi itself.
 - "runner" — refers to the `AgentRunner` interface; not to the parent Pi process.

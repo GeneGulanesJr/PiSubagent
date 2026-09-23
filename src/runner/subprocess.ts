@@ -1,12 +1,12 @@
-import { spawn, type ChildProcess } from "node:child_process";
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
-import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
-import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
-import type { Message } from "@earendil-works/pi-ai";
-import type { AgentRunner, AgentRunInput } from "./runner.js";
-import type { SingleResult, UsageStats } from "../types.js";
+import { spawn, type ChildProcess } from 'node:child_process';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { withFileMutationQueue } from '@earendil-works/pi-coding-agent';
+import type { ThinkingLevel } from '@earendil-works/pi-agent-core';
+import type { Message } from '@earendil-works/pi-ai';
+import type { AgentRunner, AgentRunInput } from './runner.js';
+import type { SingleResult, UsageStats } from '../types.js';
 
 export interface PiInvocation {
   command: string;
@@ -23,7 +23,7 @@ const MAX_BUFFER_BYTES = 1024 * 1024;
  */
 export function resolvePiInvocation(args: string[]): PiInvocation {
   const currentScript = process.argv[1];
-  const isBunVirtual = currentScript?.startsWith("/$bunfs/root/");
+  const isBunVirtual = currentScript?.startsWith('/$bunfs/root/');
   if (currentScript && !isBunVirtual && fs.existsSync(currentScript)) {
     return { command: process.execPath, args: [currentScript, ...args] };
   }
@@ -32,7 +32,7 @@ export function resolvePiInvocation(args: string[]): PiInvocation {
   if (!isGenericRuntime) {
     return { command: process.execPath, args };
   }
-  return { command: "pi", args };
+  return { command: 'pi', args };
 }
 
 /**
@@ -45,12 +45,12 @@ export async function writePromptFile(
   agentName: string,
   prompt: string,
 ): Promise<{ dir: string; filePath: string }> {
-  const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "pi-subagent-"));
-  const safeName = agentName.replace(/[^\w.-]+/g, "_");
+  const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'pi-subagent-'));
+  const safeName = agentName.replace(/[^\w.-]+/g, '_');
   const filePath = path.join(tmpDir, `prompt-${safeName}.md`);
   try {
     await withFileMutationQueue(filePath, async () => {
-      await fs.promises.writeFile(filePath, prompt, { encoding: "utf-8", mode: 0o600 });
+      await fs.promises.writeFile(filePath, prompt, { encoding: 'utf-8', mode: 0o600 });
     });
     return { dir: tmpDir, filePath };
   } catch (err) {
@@ -72,14 +72,14 @@ export async function writePromptFile(
  */
 export function killOnAbort(proc: ChildProcess, signal: AbortSignal): void {
   const killProc = () => {
-    proc.kill("SIGTERM");
+    proc.kill('SIGTERM');
     const sigkill = setTimeout(() => {
-      if (!proc.killed) proc.kill("SIGKILL");
+      if (!proc.killed) proc.kill('SIGKILL');
     }, 5000);
     sigkill.unref();
   };
   if (signal.aborted) killProc();
-  else signal.addEventListener("abort", killProc, { once: true });
+  else signal.addEventListener('abort', killProc, { once: true });
 }
 
 export type JsonlEvent = Record<string, unknown> & { type?: string };
@@ -89,9 +89,14 @@ export type JsonlEvent = Record<string, unknown> & { type?: string };
  * Malformed and blank lines are skipped silently. Callers that need to
  * observe malformed drops should track them themselves (see
  * SubprocessRunner.run, which surfaces a single stderr summary at end).
+ *
+ * Return type is `Iterable<JsonlEvent>` (not `IterableIterator`) so callers
+ * can use `for...of` / spread syntax without depending on the iterator's
+ * internal `.next()` contract — the function is a generator, so it
+ * trivially satisfies Iterable at runtime.
  */
-export function* parseJsonlEvents(stream: string): IterableIterator<JsonlEvent> {
-  for (const line of stream.split("\n")) {
+export function* parseJsonlEvents(stream: string): Iterable<JsonlEvent> {
+  for (const line of stream.split('\n')) {
     const trimmed = line.trim();
     if (!trimmed) continue;
     try {
@@ -119,7 +124,7 @@ function emptyUsage(): UsageStats {
 }
 
 export class SubprocessRunner implements AgentRunner {
-  readonly id = "subprocess" as const;
+  readonly id = 'subprocess' as const;
   private readonly spawnFn: typeof spawn;
   private readonly runTimeoutMs?: number;
 
@@ -137,15 +142,15 @@ export class SubprocessRunner implements AgentRunner {
     input: AgentRunInput,
     dispatchDefaults: { parentModel?: string; parentThinkingLevel?: ThinkingLevel },
   ): string[] {
-    const args: string[] = ["--mode", "json", "-p", "--no-session"];
+    const args: string[] = ['--mode', 'json', '-p', '--no-session'];
     const inheritsDispatchConfig = !input.agent.model;
     const model = input.agent.model ?? dispatchDefaults.parentModel;
-    if (model) args.push("--model", model);
+    if (model) args.push('--model', model);
     if (inheritsDispatchConfig && dispatchDefaults.parentThinkingLevel) {
-      args.push("--thinking", dispatchDefaults.parentThinkingLevel);
+      args.push('--thinking', dispatchDefaults.parentThinkingLevel);
     }
     if (input.agent.tools && input.agent.tools.length > 0) {
-      args.push("--tools", input.agent.tools.join(","));
+      args.push('--tools', input.agent.tools.join(','));
     }
     return args;
   }
@@ -156,7 +161,7 @@ export class SubprocessRunner implements AgentRunner {
    */
   buildSuffix(systemPrompt: string, task: string): string[] {
     const suffix: string[] = [];
-    if (systemPrompt.trim()) suffix.push("--append-system-prompt", "<tempFile>");
+    if (systemPrompt.trim()) suffix.push('--append-system-prompt', '<tempFile>');
     suffix.push(`Task: ${task}`);
     return suffix;
   }
@@ -173,11 +178,11 @@ export class SubprocessRunner implements AgentRunner {
 
     const result: SingleResult = {
       agent: input.agent.name,
-      agentSource: input.agent.source === "bundled" ? "user" : input.agent.source,
+      agentSource: input.agent.source === 'bundled' ? 'user' : input.agent.source,
       task: input.task,
       exitCode: 0,
       messages: [],
-      stderr: "",
+      stderr: '',
       usage: emptyUsage(),
       model: input.agent.model ?? input.parentModel,
     };
@@ -209,7 +214,7 @@ export class SubprocessRunner implements AgentRunner {
           const tmp = await writePromptFile(input.agent.name, input.agent.systemPrompt);
           tmpPromptDir = tmp.dir;
           tmpPromptPath = tmp.filePath;
-          args.push("--append-system-prompt", tmpPromptPath);
+          args.push('--append-system-prompt', tmpPromptPath);
         } catch (err) {
           // writePromptFile already self-cleaned its tmpdir. Continue
           // without the system prompt so a transient tmpdir failure
@@ -225,15 +230,15 @@ export class SubprocessRunner implements AgentRunner {
         const proc: ChildProcess = this.spawnFn(invocation.command, invocation.args, {
           cwd: input.cwd,
           shell: false,
-          stdio: ["ignore", "pipe", "pipe"],
+          stdio: ['ignore', 'pipe', 'pipe'],
         });
 
-        let buffer = "";
+        let buffer = '';
         let stdoutTruncated = false;
 
         const ingest = (msg: Message) => {
           result.messages.push(msg);
-          if (msg.role === "assistant") {
+          if (msg.role === 'assistant') {
             result.usage.turns += 1;
             const usage = (
               msg as unknown as { usage?: Partial<UsageStats & { totalTokens?: number }> }
@@ -281,13 +286,13 @@ export class SubprocessRunner implements AgentRunner {
             droppedJsonlCount++;
             return;
           }
-          if (event.type === "message_end" && event.message) {
+          if (event.type === 'message_end' && event.message) {
             ingest(event.message as Message);
           }
         };
 
         if (proc.stdout) {
-          proc.stdout.on("data", (chunk: Buffer | string) => {
+          proc.stdout.on('data', (chunk: Buffer | string) => {
             const text = chunk.toString();
             // Bug 2: once the line buffer exceeds the cap, stop growing
             // it and stop splitting/processing new stdout. Append a
@@ -300,36 +305,36 @@ export class SubprocessRunner implements AgentRunner {
               return;
             }
             buffer += text;
-            const lines = buffer.split("\n");
-            buffer = lines.pop() ?? "";
+            const lines = buffer.split('\n');
+            buffer = lines.pop() ?? '';
             for (const line of lines) processLine(line);
           });
         }
         if (proc.stderr) {
-          proc.stderr.on("data", (chunk: Buffer | string) => {
+          proc.stderr.on('data', (chunk: Buffer | string) => {
             // Bug 2: cap stderr growth at MAX_BUFFER_BYTES; drop new
             // bytes (don't grow) once we're past the threshold.
             appendStderr(chunk.toString());
           });
         }
 
-        proc.on("close", (code) => {
+        proc.on('close', (code) => {
           if (buffer.trim()) processLine(buffer);
           resolve(code ?? 0);
         });
-        proc.on("error", () => resolve(1));
+        proc.on('error', () => resolve(1));
 
         if (signal) {
           const onAbort = () => {
             wasAborted = true;
-            proc.kill("SIGTERM");
+            proc.kill('SIGTERM');
             const sigkill = setTimeout(() => {
-              if (proc.exitCode === null && !proc.killed) proc.kill("SIGKILL");
+              if (proc.exitCode === null && !proc.killed) proc.kill('SIGKILL');
             }, 5000);
             sigkill.unref();
           };
           if (signal.aborted) onAbort();
-          else signal.addEventListener("abort", onAbort, { once: true });
+          else signal.addEventListener('abort', onAbort, { once: true });
         }
 
         // Bug 3: optional hard timeout. Mirrors the abort pattern above
@@ -339,12 +344,12 @@ export class SubprocessRunner implements AgentRunner {
         if (this.runTimeoutMs !== undefined && this.runTimeoutMs > 0) {
           const onTimeout = () => {
             wasAborted = true;
-            proc.kill("SIGTERM");
+            proc.kill('SIGTERM');
             const sigkill = setTimeout(() => {
-              if (proc.exitCode === null && !proc.killed) proc.kill("SIGKILL");
+              if (proc.exitCode === null && !proc.killed) proc.kill('SIGKILL');
             }, 5000);
             sigkill.unref();
-            result.stopReason = "aborted";
+            result.stopReason = 'aborted';
             result.errorMessage = `run timeout after ${this.runTimeoutMs}ms`;
           };
           setTimeout(onTimeout, this.runTimeoutMs);
@@ -354,14 +359,12 @@ export class SubprocessRunner implements AgentRunner {
       // Bug 7: surface malformed-JSONL drops as a single stderr line so
       // operators can spot a misbehaving child without filling memory.
       if (droppedJsonlCount > 0) {
-        appendStderr(
-          `[subprocess: ${droppedJsonlCount} malformed JSONL lines dropped]\n`,
-        );
+        appendStderr(`[subprocess: ${droppedJsonlCount} malformed JSONL lines dropped]\n`);
       }
 
       result.exitCode = exitCode;
-      if (wasAborted) result.stopReason = "aborted";
-      else if (exitCode !== 0 && !result.stopReason) result.stopReason = "error";
+      if (wasAborted) result.stopReason = 'aborted';
+      else if (exitCode !== 0 && !result.stopReason) result.stopReason = 'error';
       return result;
     } finally {
       // Bug 4: best-effort cleanup of both file and dir in one go.

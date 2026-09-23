@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from "vitest";
-import type { Message } from "@earendil-works/pi-ai";
+import { describe, it, expect, vi } from 'vitest';
+import type { Message } from '@earendil-works/pi-ai';
 import {
   detectMode,
   buildInvalidParamsError,
@@ -7,9 +7,9 @@ import {
   MAX_CONCURRENCY,
   PER_TASK_OUTPUT_CAP,
   type DispatchContext,
-} from "../src/dispatch.js";
-import type { AgentRunner } from "../src/runner/runner.js";
-import type { AgentConfig, SingleResult } from "../src/types.js";
+} from '../src/dispatch.js';
+import type { AgentRunner } from '../src/runner/runner.js';
+import type { AgentConfig, SingleResult } from '../src/types.js';
 
 /** Build a deferred promise the test can resolve manually. */
 function deferred<T>() {
@@ -22,13 +22,21 @@ function deferred<T>() {
 function makeFakeResult(agentName: string): SingleResult {
   return {
     agent: agentName,
-    agentSource: "user",
-    task: "t",
+    agentSource: 'user',
+    task: 't',
     exitCode: 0,
     messages: [],
-    stderr: "",
-    usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 1 },
-    model: "fake",
+    stderr: '',
+    usage: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      cost: 0,
+      contextTokens: 0,
+      turns: 1,
+    },
+    model: 'fake',
   };
 }
 
@@ -37,7 +45,7 @@ function makeFakeResult(agentName: string): SingleResult {
  *  are intentionally omitted and the message is cast to Message[]. */
 function makeResultWithText(agentName: string, text: string): SingleResult {
   const messages = [
-    { role: "assistant", content: [{ type: "text", text }] },
+    { role: 'assistant', content: [{ type: 'text', text }] },
   ] as unknown as Message[];
   return {
     ...makeFakeResult(agentName),
@@ -45,58 +53,60 @@ function makeResultWithText(agentName: string, text: string): SingleResult {
   };
 }
 
-describe("detectMode", () => {
+describe('detectMode', () => {
   it("returns 'single' when agent + task present", () => {
-    expect(detectMode({ agent: "x", task: "y" })).toBe("single");
+    expect(detectMode({ agent: 'x', task: 'y' })).toBe('single');
   });
   it("returns 'parallel' when tasks[] has entries", () => {
-    expect(detectMode({ tasks: [{ agent: "x", task: "y" }] })).toBe("parallel");
+    expect(detectMode({ tasks: [{ agent: 'x', task: 'y' }] })).toBe('parallel');
   });
   it("returns 'chain' when chain[] has entries", () => {
-    expect(detectMode({ chain: [{ agent: "x", task: "y" }] })).toBe("chain");
+    expect(detectMode({ chain: [{ agent: 'x', task: 'y' }] })).toBe('chain');
   });
   it("returns 'invalid' when nothing provided", () => {
-    expect(detectMode({})).toBe("invalid");
+    expect(detectMode({})).toBe('invalid');
   });
   it("returns 'invalid' when both single AND parallel present", () => {
-    expect(detectMode({ agent: "x", task: "y", tasks: [{ agent: "a", task: "b" }] })).toBe("invalid");
+    expect(detectMode({ agent: 'x', task: 'y', tasks: [{ agent: 'a', task: 'b' }] })).toBe(
+      'invalid',
+    );
   });
   it("returns 'invalid' when single-mode agent without task", () => {
-    expect(detectMode({ agent: "x" })).toBe("invalid");
+    expect(detectMode({ agent: 'x' })).toBe('invalid');
   });
-  it("treats empty tasks/chain arrays as absent", () => {
-    expect(detectMode({ tasks: [], chain: [] })).toBe("invalid");
-    expect(detectMode({ agent: "x", task: "y", tasks: [] })).toBe("single");
+  it('treats empty tasks/chain arrays as absent', () => {
+    expect(detectMode({ tasks: [], chain: [] })).toBe('invalid');
+    expect(detectMode({ agent: 'x', task: 'y', tasks: [] })).toBe('single');
   });
 });
 
-describe("buildInvalidParamsError", () => {
+describe('buildInvalidParamsError', () => {
   const agents: AgentConfig[] = [
-    { name: "scout", description: "recon", systemPrompt: "", source: "bundled", filePath: "" },
-    { name: "worker", description: "impl", systemPrompt: "", source: "bundled", filePath: "" },
+    { name: 'scout', description: 'recon', systemPrompt: '', source: 'bundled', filePath: '' },
+    { name: 'worker', description: 'impl', systemPrompt: '', source: 'bundled', filePath: '' },
   ];
 
-  it("lists available agents and flags isError", () => {
+  it('lists available agents and flags isError', () => {
     const out = buildInvalidParamsError(agents);
     expect(out.isError).toBe(true);
-    const text = out.content[0].type === "text" ? out.content[0].text : "";
-    expect(text).toContain("scout");
-    expect(text).toContain("worker");
-    expect(text).toContain("exactly one mode");
+    const text = out.content[0].type === 'text' ? out.content[0].text : '';
+    expect(text).toContain('scout');
+    expect(text).toContain('worker');
+    expect(text).toContain('exactly one mode');
   });
 
   it("says 'none' when no agents discovered", () => {
     const out = buildInvalidParamsError([]);
-    const text = out.content[0].type === "text" ? out.content[0].text : "";
-    expect(text).toContain("none");
+    const text = out.content[0].type === 'text' ? out.content[0].text : '';
+    expect(text).toContain('none');
   });
 });
 
 // Sanity: the module must also export execute + limits (filled in Task 12).
-describe("dispatch module surface", () => {
-  it("exposes execute and limit constants", async () => {
-    const mod = await import("../src/dispatch.js");
-    expect(typeof mod.execute).toBe("function");
+describe('dispatch module surface', () => {
+  it('exposes execute and limit constants', async () => {
+    const mod = await import('../src/dispatch.js');
+    expect(typeof mod.execute).toBe('function');
     expect(mod.MAX_PARALLEL_TASKS).toBe(8);
     expect(mod.MAX_CONCURRENCY).toBe(4);
     expect(mod.PER_TASK_OUTPUT_CAP).toBe(50 * 1024);
@@ -108,7 +118,7 @@ describe("dispatch module surface", () => {
 // -pisubagent-design.md § Limits + § dispatch.test.ts (parallel concurrency
 // limit). Prior to the fix, runParallel fired every task via bare Promise.all,
 // which left the cap unenforced.
-describe("runParallel concurrency cap (issue #1, Bug 1)", () => {
+describe('runParallel concurrency cap (issue #1, Bug 1)', () => {
   it(`never has more than MAX_CONCURRENCY (=${MAX_CONCURRENCY}) tasks in flight`, async () => {
     let inFlight = 0;
     let peak = 0;
@@ -117,7 +127,7 @@ describe("runParallel concurrency cap (issue #1, Bug 1)", () => {
     const release = deferred<undefined>();
 
     const runner: AgentRunner = {
-      id: "subprocess",
+      id: 'subprocess',
       run: async (input) => {
         inFlight++;
         peak = Math.max(peak, inFlight);
@@ -133,12 +143,12 @@ describe("runParallel concurrency cap (issue #1, Bug 1)", () => {
     };
 
     // 6 tasks > MAX_CONCURRENCY → forces at least two batches.
-    const tasks = Array.from({ length: 6 }, (_, i) => ({ agent: "a", task: `t${i}` }));
+    const tasks = Array.from({ length: 6 }, (_, i) => ({ agent: 'a', task: `t${i}` }));
     const agents: AgentConfig[] = [
-      { name: "a", description: "", systemPrompt: "", source: "bundled", filePath: "" },
+      { name: 'a', description: '', systemPrompt: '', source: 'bundled', filePath: '' },
     ];
     const ctx: DispatchContext = {
-      cwd: "/tmp",
+      cwd: '/tmp',
       hasUI: false,
       isProjectTrusted: () => true,
       ui: { confirm: async () => true },
@@ -161,7 +171,7 @@ describe("runParallel concurrency cap (issue #1, Bug 1)", () => {
     expect(peak).toBe(MAX_CONCURRENCY); // cap held across both batches
     expect(out.isError).toBe(false);
     expect(out.details.results).toHaveLength(6);
-    expect(out.details.mode).toBe("parallel");
+    expect(out.details.mode).toBe('parallel');
   });
 });
 
@@ -169,16 +179,16 @@ describe("runParallel concurrency cap (issue #1, Bug 1)", () => {
 // mode in details.mode, not a placeholder. Before the fix, parallel and
 // chain calls denied at the project-agent confirmation gate would report
 // mode: "single", which lies to downstream consumers (render, logging, etc.).
-describe("execute() denial path: details.mode (issue #1, Bug 2)", () => {
+describe('execute() denial path: details.mode (issue #1, Bug 2)', () => {
   const projectAgent: AgentConfig = {
-    name: "repo-reviewer",
-    description: "x",
-    systemPrompt: "",
-    source: "project",
-    filePath: "/fake/repo-reviewer.md",
+    name: 'repo-reviewer',
+    description: 'x',
+    systemPrompt: '',
+    source: 'project',
+    filePath: '/fake/repo-reviewer.md',
   };
   const deniedCtx = () => ({
-    cwd: "/tmp",
+    cwd: '/tmp',
     hasUI: false, // no UI → confirmProjectAgentsIfNeeded blocks
     isProjectTrusted: () => false, // untrusted
     ui: { confirm: vi.fn() },
@@ -186,32 +196,32 @@ describe("execute() denial path: details.mode (issue #1, Bug 2)", () => {
 
   it("parallel mode denied → details.mode === 'parallel'", async () => {
     const out = await execute(
-      { agentScope: "project", tasks: [{ agent: "repo-reviewer", task: "x" }] },
+      { agentScope: 'project', tasks: [{ agent: 'repo-reviewer', task: 'x' }] },
       deniedCtx() as never,
       [projectAgent],
     );
     expect(out.isError).toBe(true);
-    expect(out.details.mode).toBe("parallel");
+    expect(out.details.mode).toBe('parallel');
   });
 
   it("chain mode denied → details.mode === 'chain'", async () => {
     const out = await execute(
-      { agentScope: "project", chain: [{ agent: "repo-reviewer", task: "x" }] },
+      { agentScope: 'project', chain: [{ agent: 'repo-reviewer', task: 'x' }] },
       deniedCtx() as never,
       [projectAgent],
     );
     expect(out.isError).toBe(true);
-    expect(out.details.mode).toBe("chain");
+    expect(out.details.mode).toBe('chain');
   });
 
   it("single mode denied → details.mode === 'single' (no regression)", async () => {
     const out = await execute(
-      { agentScope: "project", agent: "repo-reviewer", task: "x" },
+      { agentScope: 'project', agent: 'repo-reviewer', task: 'x' },
       deniedCtx() as never,
       [projectAgent],
     );
     expect(out.isError).toBe(true);
-    expect(out.details.mode).toBe("single");
+    expect(out.details.mode).toBe('single');
   });
 });
 
@@ -222,23 +232,23 @@ describe("execute() denial path: details.mode (issue #1, Bug 2)", () => {
 // chatty agent could flood the parent's context with multi-MB content text.
 // The full output is still preserved in details.results[i].messages — only
 // the joined `content[0].text` payload is capped.
-describe("runParallel truncates each per-agent output to PER_TASK_OUTPUT_CAP", () => {
-  it("caps every per-agent summary body and marks the join", async () => {
+describe('runParallel truncates each per-agent output to PER_TASK_OUTPUT_CAP', () => {
+  it('caps every per-agent summary body and marks the join', async () => {
     // 80KB of text > 50KB cap so truncation MUST happen.
-    const big = "x".repeat(80 * 1024);
+    const big = 'x'.repeat(80 * 1024);
     const runner: AgentRunner = {
-      id: "subprocess",
+      id: 'subprocess',
       run: async (input) => makeResultWithText(input.agent.name, big),
     };
     const tasks = [
-      { agent: "a", task: "t0" },
-      { agent: "a", task: "t1" },
+      { agent: 'a', task: 't0' },
+      { agent: 'a', task: 't1' },
     ];
     const agents: AgentConfig[] = [
-      { name: "a", description: "", systemPrompt: "", source: "bundled", filePath: "" },
+      { name: 'a', description: '', systemPrompt: '', source: 'bundled', filePath: '' },
     ];
     const ctx: DispatchContext = {
-      cwd: "/tmp",
+      cwd: '/tmp',
       hasUI: false,
       isProjectTrusted: () => true,
       ui: { confirm: async () => true },
@@ -246,21 +256,19 @@ describe("runParallel truncates each per-agent output to PER_TASK_OUTPUT_CAP", (
 
     const out = await execute({ tasks }, ctx, agents, runner);
     expect(out.isError).toBe(false);
-    expect(out.details.mode).toBe("parallel");
+    expect(out.details.mode).toBe('parallel');
     expect(out.details.results).toHaveLength(tasks.length);
 
-    const text = out.content[0].type === "text" ? out.content[0].text : "";
-    const marker = "[Output truncated:";
+    const text = out.content[0].type === 'text' ? out.content[0].text : '';
+    const marker = '[Output truncated:';
     // Exactly one truncation marker per result.
     expect(text.split(marker).length - 1).toBe(tasks.length);
     expect(text).toContain(marker);
     // Joined payload must be much smaller than the un-capped raw output.
     // Each summary body is capped at PER_TASK_OUTPUT_CAP plus the marker +
     // small per-agent heading; two summaries must comfortably fit.
-    expect(Buffer.byteLength(text, "utf8")).toBeLessThan(
-      PER_TASK_OUTPUT_CAP * tasks.length + 512,
-    );
-    expect(Buffer.byteLength(text, "utf8")).toBeGreaterThan(PER_TASK_OUTPUT_CAP);
+    expect(Buffer.byteLength(text, 'utf8')).toBeLessThan(PER_TASK_OUTPUT_CAP * tasks.length + 512);
+    expect(Buffer.byteLength(text, 'utf8')).toBeGreaterThan(PER_TASK_OUTPUT_CAP);
 
     // details.results must still hold the full untruncated messages.
     for (const r of out.details.results) {
@@ -269,27 +277,27 @@ describe("runParallel truncates each per-agent output to PER_TASK_OUTPUT_CAP", (
     }
   });
 
-  it("leaves small outputs untouched (no marker when below cap)", async () => {
+  it('leaves small outputs untouched (no marker when below cap)', async () => {
     // 1KB << 50KB cap → no truncation.
-    const small = "y".repeat(1024);
+    const small = 'y'.repeat(1024);
     const runner: AgentRunner = {
-      id: "subprocess",
+      id: 'subprocess',
       run: async (input) => makeResultWithText(input.agent.name, small),
     };
-    const tasks = [{ agent: "a", task: "t0" }];
+    const tasks = [{ agent: 'a', task: 't0' }];
     const agents: AgentConfig[] = [
-      { name: "a", description: "", systemPrompt: "", source: "bundled", filePath: "" },
+      { name: 'a', description: '', systemPrompt: '', source: 'bundled', filePath: '' },
     ];
     const ctx: DispatchContext = {
-      cwd: "/tmp",
+      cwd: '/tmp',
       hasUI: false,
       isProjectTrusted: () => true,
       ui: { confirm: async () => true },
     };
     const out = await execute({ tasks }, ctx, agents, runner);
-    const text = out.content[0].type === "text" ? out.content[0].text : "";
-    expect(text).not.toContain("[Output truncated:");
-    expect(text).toContain("y".repeat(64)); // a chunk of the small payload
+    const text = out.content[0].type === 'text' ? out.content[0].text : '';
+    expect(text).not.toContain('[Output truncated:');
+    expect(text).toContain('y'.repeat(64)); // a chunk of the small payload
   });
 });
 
@@ -299,13 +307,13 @@ describe("runParallel truncates each per-agent output to PER_TASK_OUTPUT_CAP", (
 // /specs/2026-09-08-pisubagent-design.md § Limits. truncateParallelOutput is
 // the canonical reducer (shared with the parallel path), so the marker is the
 // same `[Output truncated: ... bytes omitted]` the parent will see.
-describe("runChain caps {previous} to PER_TASK_OUTPUT_CAP", () => {
-  it("truncates previous step output before substituting into next step", async () => {
+describe('runChain caps {previous} to PER_TASK_OUTPUT_CAP', () => {
+  it('truncates previous step output before substituting into next step', async () => {
     // 80KB final text > 50KB cap so truncation MUST happen.
-    const big = "y".repeat(80 * 1024);
+    const big = 'y'.repeat(80 * 1024);
     const calls: Array<{ agent: string; resolvedTask?: string }> = [];
     const runner: AgentRunner = {
-      id: "subprocess",
+      id: 'subprocess',
       run: async (input) => {
         calls.push({ agent: input.agent.name, resolvedTask: input.resolvedTask });
         // Step 1 emits the big text. Step 2 emits an empty success.
@@ -315,18 +323,18 @@ describe("runChain caps {previous} to PER_TASK_OUTPUT_CAP", () => {
       },
     };
     const agents: AgentConfig[] = [
-      { name: "a", description: "", systemPrompt: "", source: "bundled", filePath: "" },
-      { name: "b", description: "", systemPrompt: "", source: "bundled", filePath: "" },
+      { name: 'a', description: '', systemPrompt: '', source: 'bundled', filePath: '' },
+      { name: 'b', description: '', systemPrompt: '', source: 'bundled', filePath: '' },
     ];
     const ctx: DispatchContext = {
-      cwd: "/tmp",
+      cwd: '/tmp',
       hasUI: false,
       isProjectTrusted: () => true,
       ui: { confirm: async () => true },
     };
     const chain = [
-      { agent: "a", task: "produce output" },
-      { agent: "b", task: "consume {previous}" },
+      { agent: 'a', task: 'produce output' },
+      { agent: 'b', task: 'consume {previous}' },
     ];
 
     const out = await execute({ chain }, ctx, agents, runner);
@@ -334,16 +342,16 @@ describe("runChain caps {previous} to PER_TASK_OUTPUT_CAP", () => {
     expect(calls).toHaveLength(2);
 
     // Step 1 has no {previous} placeholder → resolvedTask is the raw task.
-    expect(calls[0].resolvedTask).toBe("produce output");
+    expect(calls[0].resolvedTask).toBe('produce output');
 
     // Step 2's prompt is the truncated previous output. The marker MUST be
     // present and the full 80KB MUST NOT be embedded in the prompt.
     const step2Resolved = calls[1].resolvedTask;
     expect(step2Resolved).toBeDefined();
-    expect(step2Resolved).toContain("[Output truncated:");
+    expect(step2Resolved).toContain('[Output truncated:');
     expect(step2Resolved!.length).toBeLessThan(80 * 1024);
     // The preserved prefix is still there (truncateParallelOutput keeps the
     // first PER_TASK_OUTPUT_CAP bytes verbatim).
-    expect(step2Resolved).toContain("y");
+    expect(step2Resolved).toContain('y');
   });
 });

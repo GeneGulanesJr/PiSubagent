@@ -19,7 +19,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-        node-version: ["22"]
+        node-version: ['22']
 
     timeout-minutes: 10
 

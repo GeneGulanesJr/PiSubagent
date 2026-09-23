@@ -1,5 +1,5 @@
-import type { AgentToolResult, ThinkingLevel } from "@earendil-works/pi-agent-core";
-import type { SingleResult, AgentConfig, SubagentDetails } from "../types.js";
+import type { AgentToolResult, ThinkingLevel } from '@earendil-works/pi-agent-core';
+import type { SingleResult, AgentConfig, SubagentDetails } from '../types.js';
 
 export interface AgentRunInput {
   agent: AgentConfig;
@@ -13,13 +13,17 @@ export interface AgentRunInput {
   resolvedTask?: string;
 }
 
-export type AgentRunnerId = "subprocess" | "in-process";
+export type AgentRunnerId = 'subprocess' | 'in-process';
 
 export type OnUpdatePartial = (partial: SingleResult) => void;
 
 export interface AgentRunner {
   readonly id: AgentRunnerId;
-  run(input: AgentRunInput, signal?: AbortSignal, onUpdate?: OnUpdatePartial): Promise<SingleResult>;
+  run(
+    input: AgentRunInput,
+    signal?: AbortSignal,
+    onUpdate?: OnUpdatePartial,
+  ): Promise<SingleResult>;
 }
 
 // Re-exports so consumers don't reach into multiple packages for common types.

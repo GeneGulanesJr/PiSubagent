@@ -1,14 +1,10 @@
-import * as fs from "node:fs";
-import * as path from "node:path";
-import { fileURLToPath } from "node:url";
-import {
-  CONFIG_DIR_NAME,
-  getAgentDir,
-  parseFrontmatter,
-} from "@earendil-works/pi-coding-agent";
-import type { AgentConfig } from "./types.js";
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { CONFIG_DIR_NAME, getAgentDir, parseFrontmatter } from '@earendil-works/pi-coding-agent';
+import type { AgentConfig } from './types.js';
 
-export type AgentScope = "user" | "project" | "both";
+export type AgentScope = 'user' | 'project' | 'both';
 
 export interface AgentDiscoveryResult {
   agents: AgentConfig[];
@@ -24,13 +20,9 @@ type AgentFrontmatter = {
 };
 
 export function parseToolList(value: unknown): string[] | undefined {
-  const raw = Array.isArray(value)
-    ? value
-    : typeof value === "string"
-      ? value.split(",")
-      : [];
+  const raw = Array.isArray(value) ? value : typeof value === 'string' ? value.split(',') : [];
   const tools = raw
-    .filter((t): t is string => typeof t === "string")
+    .filter((t): t is string => typeof t === 'string')
     .map((t) => t.trim())
     .filter(Boolean);
   return tools.length > 0 ? tools : undefined;
@@ -46,7 +38,7 @@ function isDirectory(p: string): boolean {
 
 export function loadAgentsFromDir(
   dir: string,
-  source: "user" | "project" | "bundled",
+  source: 'user' | 'project' | 'bundled',
 ): AgentConfig[] {
   const agents: AgentConfig[] = [];
   if (!fs.existsSync(dir)) return agents;
@@ -59,19 +51,19 @@ export function loadAgentsFromDir(
   }
 
   for (const entry of entries) {
-    if (!entry.name.endsWith(".md")) continue;
+    if (!entry.name.endsWith('.md')) continue;
     if (!entry.isFile() && !entry.isSymbolicLink()) continue;
 
     const filePath = path.join(dir, entry.name);
     let content: string;
     try {
-      content = fs.readFileSync(filePath, "utf-8");
+      content = fs.readFileSync(filePath, 'utf-8');
     } catch {
       continue;
     }
 
     const { frontmatter, body } = parseFrontmatter<AgentFrontmatter>(content);
-    if (typeof frontmatter.name !== "string" || typeof frontmatter.description !== "string") {
+    if (typeof frontmatter.name !== 'string' || typeof frontmatter.description !== 'string') {
       continue;
     }
 
@@ -79,7 +71,7 @@ export function loadAgentsFromDir(
       name: frontmatter.name,
       description: frontmatter.description,
       tools: parseToolList(frontmatter.tools),
-      model: typeof frontmatter.model === "string" ? frontmatter.model : undefined,
+      model: typeof frontmatter.model === 'string' ? frontmatter.model : undefined,
       systemPrompt: body,
       source,
       filePath,
@@ -92,7 +84,7 @@ export function loadAgentsFromDir(
 export function findNearestProjectAgentsDir(cwd: string): string | null {
   let currentDir = cwd;
   while (true) {
-    const candidate = path.join(currentDir, CONFIG_DIR_NAME, "agents");
+    const candidate = path.join(currentDir, CONFIG_DIR_NAME, 'agents');
     if (isDirectory(candidate)) return candidate;
 
     const parentDir = path.dirname(currentDir);
@@ -107,7 +99,7 @@ export function findNearestProjectAgentsDir(cwd: string): string | null {
  */
 export function resolveBundledAgentsDir(importMetaUrl: string): string {
   const here = path.dirname(fileURLToPath(importMetaUrl));
-  return path.resolve(here, "../../agents");
+  return path.resolve(here, '../../agents');
 }
 
 /**
@@ -132,7 +124,7 @@ export function discoverAgents(
   scope: AgentScope,
   bundledDir: string,
 ): AgentDiscoveryResult {
-  const userDir = path.join(getAgentDir(), "agents");
+  const userDir = path.join(getAgentDir(), 'agents');
   const projectAgentsDir = findNearestProjectAgentsDir(cwd);
 
   // Scope → load-source matrix. The TypeBox schema in src/index.ts already
@@ -146,16 +138,14 @@ export function discoverAgents(
   //   "project"        no      no    yes
   //   "both"          yes     yes    yes
   //   anything else   yes     yes    yes  (defensive: same as "both")
-  const loadBundled = scope !== "project";
-  const loadUser = scope !== "project";
-  const loadProject = scope !== "user";
+  const loadBundled = scope !== 'project';
+  const loadUser = scope !== 'project';
+  const loadProject = scope !== 'user';
 
-  const bundledAgents = loadBundled ? loadAgentsFromDir(bundledDir, "bundled") : [];
-  const userAgents = loadUser ? loadAgentsFromDir(userDir, "user") : [];
+  const bundledAgents = loadBundled ? loadAgentsFromDir(bundledDir, 'bundled') : [];
+  const userAgents = loadUser ? loadAgentsFromDir(userDir, 'user') : [];
   const projectAgents =
-    loadProject && projectAgentsDir
-      ? loadAgentsFromDir(projectAgentsDir, "project")
-      : [];
+    loadProject && projectAgentsDir ? loadAgentsFromDir(projectAgentsDir, 'project') : [];
 
   const agentMap = new Map<string, AgentConfig>();
   for (const a of bundledAgents) agentMap.set(a.name, a);

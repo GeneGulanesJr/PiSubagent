@@ -1,47 +1,55 @@
-import { fileURLToPath } from "node:url";
-import * as path from "node:path";
-import { Type, type Static } from "@sinclair/typebox";
-import { Text } from "@earendil-works/pi-tui";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import type { SubagentParams, SubagentDetails } from "./types.js";
-import { resolveBundledAgentsDir, discoverAgents, type AgentScope } from "./agents.js";
-import { execute, type DispatchContext, type ToolResultLike } from "./dispatch.js";
-import { renderCall, renderResult } from "./render.js";
+import { fileURLToPath } from 'node:url';
+import * as path from 'node:path';
+import { Type, type Static } from '@sinclair/typebox';
+import { Text } from '@earendil-works/pi-tui';
+import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
+import type { SubagentParams, SubagentDetails } from './types.js';
+import { resolveBundledAgentsDir, discoverAgents, type AgentScope } from './agents.js';
+import { execute, type DispatchContext, type ToolResultLike } from './dispatch.js';
+import { renderCall, renderResult } from './render.js';
 
 const TaskItem = Type.Object({
-  agent: Type.String({ description: "Name of the agent to invoke" }),
-  task: Type.String({ description: "Task to delegate to the agent" }),
-  cwd: Type.Optional(Type.String({ description: "Working directory for the agent process" })),
+  agent: Type.String({ description: 'Name of the agent to invoke' }),
+  task: Type.String({ description: 'Task to delegate to the agent' }),
+  cwd: Type.Optional(Type.String({ description: 'Working directory for the agent process' })),
 });
 
 const ChainItem = Type.Object({
-  agent: Type.String({ description: "Name of the agent to invoke" }),
-  task: Type.String({ description: "Task with optional {previous} placeholder for prior output" }),
-  cwd: Type.Optional(Type.String({ description: "Working directory for the agent process" })),
+  agent: Type.String({ description: 'Name of the agent to invoke' }),
+  task: Type.String({ description: 'Task with optional {previous} placeholder for prior output' }),
+  cwd: Type.Optional(Type.String({ description: 'Working directory for the agent process' })),
 });
 
 const AgentScopeSchema = Type.Union(
-  [Type.Literal("user"), Type.Literal("project"), Type.Literal("both")],
+  [Type.Literal('user'), Type.Literal('project'), Type.Literal('both')],
   {
     description:
       'Which agent directories to use. Default: "user". Use "both" to include project-local agents.',
-    default: "user",
+    default: 'user',
   },
 );
 
 const SubagentParamsSchema = Type.Object({
-  agent: Type.Optional(Type.String({ description: "Name of the agent to invoke (for single mode)" })),
-  task: Type.Optional(Type.String({ description: "Task to delegate (for single mode)" })),
-  tasks: Type.Optional(Type.Array(TaskItem, { description: "Array of {agent, task} for parallel execution" })),
-  chain: Type.Optional(Type.Array(ChainItem, { description: "Array of {agent, task} for sequential execution" })),
+  agent: Type.Optional(
+    Type.String({ description: 'Name of the agent to invoke (for single mode)' }),
+  ),
+  task: Type.Optional(Type.String({ description: 'Task to delegate (for single mode)' })),
+  tasks: Type.Optional(
+    Type.Array(TaskItem, { description: 'Array of {agent, task} for parallel execution' }),
+  ),
+  chain: Type.Optional(
+    Type.Array(ChainItem, { description: 'Array of {agent, task} for sequential execution' }),
+  ),
   agentScope: Type.Optional(AgentScopeSchema),
   confirmProjectAgents: Type.Optional(
     Type.Boolean({
-      description: "Prompt before running project-local agents. Default: true.",
+      description: 'Prompt before running project-local agents. Default: true.',
       default: true,
     }),
   ),
-  cwd: Type.Optional(Type.String({ description: "Working directory for the agent process (single mode)" })),
+  cwd: Type.Optional(
+    Type.String({ description: 'Working directory for the agent process (single mode)' }),
+  ),
 });
 
 /** Resolved at module load: package root's agents/ dir (src/ → ../../agents). */
@@ -51,19 +59,19 @@ void HERE; // retained for future path-relative needs
 
 export default function (pi: ExtensionAPI) {
   pi.registerTool({
-    name: "subagent",
-    label: "Subagent",
+    name: 'subagent',
+    label: 'Subagent',
     description: [
-      "Delegate tasks to specialized subagents with isolated context.",
-      "Modes: single (agent + task), parallel (tasks array), chain (sequential with {previous} placeholder).",
+      'Delegate tasks to specialized subagents with isolated context.',
+      'Modes: single (agent + task), parallel (tasks array), chain (sequential with {previous} placeholder).',
       "Default agent scope is 'user' (from ~/.pi/agent/agents).",
       "To enable project-local agents in .pi/agents, set agentScope: 'both' (or 'project').",
-    ].join(" "),
+    ].join(' '),
     parameters: SubagentParamsSchema,
 
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
       const p = params as Static<typeof SubagentParamsSchema>;
-      const scope: AgentScope = p.agentScope ?? "user";
+      const scope: AgentScope = p.agentScope ?? 'user';
       const discovery = discoverAgents(ctx.cwd, scope, BUNDLED_DIR);
 
       const dispatchCtx: DispatchContext = {
