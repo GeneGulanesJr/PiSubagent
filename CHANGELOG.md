@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-09-23
+
+Maintenance patch. No public-API or runtime changes — only the install path for `--omit=dev` consumers.
+
+### Fixed
+
+- `npm install --omit=dev` (used by Pi's git-source package manager at `~/.pi/agent/git/...` and by Docker builds) failed with `sh: husky: command not found` / exit 127: the `prepare` lifecycle script ran `husky` unconditionally even though `husky` lives in `devDependencies` and was therefore absent. `prepare` now fails-open with `command -v husky >/dev/null 2>&1 && husky || true` so full dev installs still execute `husky install` (`fc3b2a0`).
+
 ## [0.1.2] - 2026-09-23
 
 Quality-of-life, CI hardening, dev-tooling, and observability release. No breaking changes to the public `subagent` tool surface. All changes ship behind the existing `pi install git:github.com/GeneGulanesJr/PiSubagent` distribution path.

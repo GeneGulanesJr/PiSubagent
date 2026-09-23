@@ -1,6 +1,6 @@
 {
   "name": "pisubagent",
-  "version": "0.1.0",
+  "version": "0.1.3",
   "description": "Pi subagent tool — isolated subprocess dispatch with three modes (single / parallel / chain). Bundled scout / planner / reviewer / worker agents.",
   "type": "module",
   "engines": {
