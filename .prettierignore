@@ -1,0 +1,8 @@
+node_modules/
+dist/
+coverage/
+.vitest-cache/
+package-lock.json
+agents/
+prompts/
+skills/
