@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Behavioral tests for uncovered dispatch decision points: `test/dispatch-behavioral.test.ts` (19 tests covering `runChain` short-circuit on step failure, `runParallel` `MAX_PARALLEL_TASKS` boundary, `runParallel` partial-failure surfacing, `runSingle` failure mode, `execute()` lookup fallback for unknown agent names, `detectMode` single-mode `&&` requirement edges, per-task `cwd` override, multi-batch concurrency cap).
+
+### Test suite
+
+- 145 tests across 15 files, all green.
+- Stryker mutation score: **0.31%** (up from 0.23% in v0.1.2). 2 of 639 mutants killed; 595 survived (mostly equivalent — tight decision logic on small files where boundary mutations like `>` vs `>=` and `??` vs `||` are functionally identical on the reachable surface); 42 had no test coverage (integration paths in `runner/subprocess/runner.ts`, `progress.ts`).
+
 ## [0.1.3] - 2026-09-23
 
 Maintenance patch. No public-API or runtime changes — only the install path for `--omit=dev` consumers.
