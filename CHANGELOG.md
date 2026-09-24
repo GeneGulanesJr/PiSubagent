@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-09-23
+
+Build-infrastructure patch. No public-API or runtime changes. Major-version bumps for `lint-staged`, `@types/node`, `eslint`, and `typescript`, plus peer-dep and plugin cascade fixes that those bumps surfaced.
+
+### Changed
+
+- `prettier` 3.9.8 → 3.9.9 (`7f579d3`).
+- `tsx` `^4.0.0` → `^4.23.15` (`7f579d3`).
+- `peerDependencies` for the four `@earendil-works/pi-*` packages: `"*"` → `^0.87.1` (`7f579d3`).
+- `lint-staged` `^15.2.10` → `^17.5.1` (`c09906b`). No config changes needed — the existing `.lintstagedrc.json` is forward-compatible.
+- `@types/node` `^22.20.4` → `^26.6.2` (`de0437f`).
+- `eslint` `^9.39.5` → `^10.11.0` + `@eslint/js` `^9.39.5` → `^10.0.1` (`e66cef1`). Required cascade fixes: added peers to `devDependencies` (modern npm doesn't auto-install peer deps), added `vite ^7.1.0` for vitest 5 peer, replaced `eslint-plugin-vitest@0.5.4` (broken under eslint 10) with `@vitest/eslint-plugin` (vitest-team-official, flat-config native). Also fixed one real bug surfaced by lint running on `src/`: `src/runner/subprocess/runner.ts` had an unused `tmpPromptPath` variable (`no-useless-assignment`) — inlined the single use of `tmp.filePath` and dropped the name.
+- `typescript` `^5.7.0` → `^6.0.3` (`e26fd2f`). The ceiling is ecosystem-bounded: `typescript-eslint@8.70.1` (current `latest` on npm) declares `peerDependencies.typescript: '>=4.8.4 <6.1.0'`, so TS 7.0.2 is out of reach until typescript-eslint ships a v9 / next channel. Forcing `--legacy-peer-deps` would install but break lint at runtime.
+
+### Fixed
+
+- `src/runner/subprocess/runner.ts` — dropped useless `tmpPromptPath` variable; inlined the single use of `tmp.filePath` (no behavioral change). Uncovered by the eslint 10 migration above once eslint actually started linting `src/`. (`e66cef1`)
+
+### Build config
+
+- `stryker.config.mjs` — landed the `excludedMutations` block (StringLiteral, ObjectLiteral, ArrayDeclaration, Regex, ArrowFunction) that had been sitting uncommitted from prior mutation analysis. No source or test changes (`d2cd712`).
+
+### Test suite
+
+- 185 tests across 17 files, all green.
+- Stryker mutation score: **0.45%** (still the post-v0.1.6 baseline; no further lift this round — the score ceiling is bounded by `perTest` coverage attribution, not test value, per memory `#26282`).
+
 ## [0.1.4] - 2026-09-23
 
 Test-infrastructure patch. No public-API or runtime changes — only test coverage for previously-uncovered decision points and integration paths. All 59 new tests pass; existing 126 tests unchanged.
