@@ -91,7 +91,6 @@ export class SubprocessRunner implements AgentRunner {
     };
 
     let tmpPromptDir: string | null = null;
-    let tmpPromptPath: string | null = null;
     let wasAborted = false;
     let droppedJsonlCount = 0;
     let onUpdateErrorLogged = false;
@@ -116,8 +115,7 @@ export class SubprocessRunner implements AgentRunner {
         try {
           const tmp = await writePromptFile(input.agent.name, input.agent.systemPrompt);
           tmpPromptDir = tmp.dir;
-          tmpPromptPath = tmp.filePath;
-          args.push('--append-system-prompt', tmpPromptPath);
+          args.push('--append-system-prompt', tmp.filePath);
         } catch (err) {
           // writePromptFile already self-cleaned its tmpdir. Continue
           // without the system prompt so a transient tmpdir failure
