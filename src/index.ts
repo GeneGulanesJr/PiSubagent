@@ -16,11 +16,19 @@ const ThinkingLevelSchema = Type.Union(
   { description: THINKING_LEVEL_DESCRIPTION },
 );
 
+const TIMEOUT_MS_DESCRIPTION =
+  'Wall-clock budget in ms for this dispatch; on expiry the child is killed (SIGTERM, then SIGKILL after 5s) and the result is marked timedOut. Minimum 1000.';
+
+const TimeoutMsSchema = Type.Optional(
+  Type.Number({ minimum: 1000, description: TIMEOUT_MS_DESCRIPTION }),
+);
+
 const TaskItem = Type.Object({
   agent: Type.String({ description: 'Name of the agent to invoke' }),
   task: Type.String({ description: 'Task to delegate to the agent' }),
   cwd: Type.Optional(Type.String({ description: 'Working directory for the agent process' })),
   thinkingLevel: Type.Optional(ThinkingLevelSchema),
+  timeoutMs: TimeoutMsSchema,
 });
 
 const ChainItem = Type.Object({
@@ -28,6 +36,7 @@ const ChainItem = Type.Object({
   task: Type.String({ description: 'Task with optional {previous} placeholder for prior output' }),
   cwd: Type.Optional(Type.String({ description: 'Working directory for the agent process' })),
   thinkingLevel: Type.Optional(ThinkingLevelSchema),
+  timeoutMs: TimeoutMsSchema,
 });
 
 const AgentScopeSchema = Type.Union(
@@ -45,6 +54,7 @@ const SubagentParamsSchema = Type.Object({
   ),
   task: Type.Optional(Type.String({ description: 'Task to delegate (for single mode)' })),
   thinkingLevel: Type.Optional(ThinkingLevelSchema),
+  timeoutMs: TimeoutMsSchema,
   tasks: Type.Optional(
     Type.Array(TaskItem, { description: 'Array of {agent, task} for parallel execution' }),
   ),

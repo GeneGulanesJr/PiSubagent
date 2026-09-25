@@ -11,6 +11,8 @@ export interface AgentRunInput {
   parentThinkingLevel?: ThinkingLevel;
   /** Per-dispatch override from the tool call; beats frontmatter and parent. */
   thinkingLevelOverride?: ThinkingLevel;
+  /** Per-dispatch timeout in ms; beats the runner-level runTimeoutMs. */
+  timeoutMs?: number;
   /** Pre-substituted text replacing {previous} for chain steps. */
   resolvedTask?: string;
 }

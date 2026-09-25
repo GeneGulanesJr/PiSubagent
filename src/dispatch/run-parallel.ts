@@ -49,6 +49,7 @@ export async function runParallel(
               task: t.task,
               cwd: t.cwd ?? ctx.cwd,
               thinkingLevelOverride: t.thinkingLevel,
+              timeoutMs: t.timeoutMs,
               ...parentDefaults(ctx),
             },
             ctx.signal,

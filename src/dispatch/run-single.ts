@@ -23,6 +23,7 @@ export async function runSingle(
       task: params.task!,
       cwd: params.cwd ?? ctx.cwd,
       thinkingLevelOverride: params.thinkingLevel,
+      timeoutMs: params.timeoutMs,
       ...parentDefaults(ctx),
     },
     ctx.signal,

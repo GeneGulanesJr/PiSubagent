@@ -104,6 +104,7 @@ export class SubprocessRunner implements AgentRunner {
 
     let tmpPromptDir: string | null = null;
     let wasAborted = false;
+    let didTimeOut = false;
     let droppedJsonlCount = 0;
     let onUpdateErrorLogged = false;
 
@@ -232,10 +233,14 @@ export class SubprocessRunner implements AgentRunner {
         }
 
         proc.on('close', (code) => {
+          if (timeoutHandle) clearTimeout(timeoutHandle);
           if (buffer.trim()) processLine(buffer);
           resolve(code ?? 0);
         });
-        proc.on('error', () => resolve(1));
+        proc.on('error', () => {
+          if (timeoutHandle) clearTimeout(timeoutHandle);
+          resolve(1);
+        });
 
         if (signal) {
           const onAbort = () => {
@@ -250,22 +255,23 @@ export class SubprocessRunner implements AgentRunner {
           else signal.addEventListener('abort', onAbort, { once: true });
         }
 
-        // Bug 3: optional hard timeout. Mirrors the abort pattern above
-        // (SIGTERM now, SIGKILL after 5s grace). The grace timer is
-        // `.unref()`'d so it never keeps the event loop alive once the
-        // runner has settled.
-        if (this.runTimeoutMs !== undefined && this.runTimeoutMs > 0) {
-          const onTimeout = () => {
-            wasAborted = true;
+        // Per-dispatch timeout beats the runner-level default. On expiry:
+        // SIGTERM now, SIGKILL after 5s grace (unref'd), and the result is
+        // marked timedOut so callers can distinguish timeout from user abort.
+        const effectiveTimeoutMs = input.timeoutMs ?? this.runTimeoutMs;
+        let timeoutHandle: NodeJS.Timeout | undefined;
+        if (effectiveTimeoutMs !== undefined && effectiveTimeoutMs > 0) {
+          timeoutHandle = setTimeout(() => {
+            didTimeOut = true;
             proc.kill('SIGTERM');
             const sigkill = setTimeout(() => {
               if (proc.exitCode === null && !proc.killed) proc.kill('SIGKILL');
             }, 5000);
             sigkill.unref();
             result.stopReason = 'aborted';
-            result.errorMessage = `run timeout after ${this.runTimeoutMs}ms`;
-          };
-          setTimeout(onTimeout, this.runTimeoutMs);
+            result.errorMessage = `run timeout after ${effectiveTimeoutMs}ms`;
+          }, effectiveTimeoutMs);
+          timeoutHandle.unref();
         }
       });
 
@@ -276,6 +282,7 @@ export class SubprocessRunner implements AgentRunner {
       }
 
       result.exitCode = exitCode;
+      if (didTimeOut) result.timedOut = true;
       if (wasAborted) result.stopReason = 'aborted';
       else if (exitCode !== 0 && !result.stopReason) result.stopReason = 'error';
       return result;

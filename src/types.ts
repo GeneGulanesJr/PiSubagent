@@ -5,8 +5,22 @@ export interface SubagentParams {
   agent?: string;
   task?: string;
   thinkingLevel?: ThinkingLevel;
-  tasks?: Array<{ agent: string; task: string; cwd?: string; thinkingLevel?: ThinkingLevel }>;
-  chain?: Array<{ agent: string; task: string; cwd?: string; thinkingLevel?: ThinkingLevel }>;
+  /** Wall-clock budget in ms for the child process (single mode). */
+  timeoutMs?: number;
+  tasks?: Array<{
+    agent: string;
+    task: string;
+    cwd?: string;
+    thinkingLevel?: ThinkingLevel;
+    timeoutMs?: number;
+  }>;
+  chain?: Array<{
+    agent: string;
+    task: string;
+    cwd?: string;
+    thinkingLevel?: ThinkingLevel;
+    timeoutMs?: number;
+  }>;
   agentScope?: 'user' | 'project' | 'both';
   confirmProjectAgents?: boolean;
   cwd?: string;
@@ -36,6 +50,8 @@ export interface SingleResult {
   /** Effective thinking level the run was launched with (see src/thinking.ts). */
   thinkingLevel?: ThinkingLevel;
   stopReason?: string;
+  /** True when the run was ended by the per-dispatch/runner timeout (not user abort). */
+  timedOut?: boolean;
   errorMessage?: string;
   step?: number;
   /** True while this agent is still executing (progress snapshots); false once settled. */
@@ -59,6 +75,8 @@ export interface AgentRunInput {
   parentThinkingLevel?: ThinkingLevel;
   /** Per-dispatch override from the tool call; beats frontmatter and parent. */
   thinkingLevelOverride?: ThinkingLevel;
+  /** Per-dispatch timeout in ms; beats the runner-level runTimeoutMs. */
+  timeoutMs?: number;
   /** Pre-substituted text replacing {previous} for chain steps. */
   resolvedTask?: string;
 }
