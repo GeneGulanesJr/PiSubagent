@@ -48,6 +48,7 @@ export async function runParallel(
               agent: lookup(t.agent),
               task: t.task,
               cwd: t.cwd ?? ctx.cwd,
+              thinkingLevelOverride: t.thinkingLevel,
               ...parentDefaults(ctx),
             },
             ctx.signal,

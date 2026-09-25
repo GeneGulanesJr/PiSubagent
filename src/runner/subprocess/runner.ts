@@ -6,6 +6,7 @@ import type { AgentRunner, AgentRunInput } from '../runner.js';
 import type { SingleResult, UsageStats } from '../../types.js';
 import { resolvePiInvocation } from './invocation.js';
 import { writePromptFile } from './prompt-file.js';
+import { resolveThinkingLevel } from '../../thinking.js';
 
 /** Hard cap on stdout line buffer / stderr accumulator per run (1 MB). */
 const MAX_BUFFER_BYTES = 1024 * 1024;
@@ -40,18 +41,24 @@ export class SubprocessRunner implements AgentRunner {
    * Pure CLI-flag prefix composition. Order is stable for tests:
    * --mode json -p --no-session [--model M] [--thinking T] [--tools list]
    * (run() appends [--append-system-prompt tmp] and the Task: line afterwards.)
+   *
+   * Thinking level resolution (most specific wins): per-dispatch override →
+   * agent frontmatter → parent inheritance (only when the agent inherits the
+   * parent's model) → DEFAULT_SUBAGENT_THINKING for model-pinned agents.
+   * See src/thinking.ts.
    */
   buildArgs(
     input: AgentRunInput,
     dispatchDefaults: { parentModel?: string; parentThinkingLevel?: ThinkingLevel },
   ): string[] {
     const args: string[] = ['--mode', 'json', '-p', '--no-session'];
-    const inheritsDispatchConfig = !input.agent.model;
     const model = input.agent.model ?? dispatchDefaults.parentModel;
     if (model) args.push('--model', model);
-    if (inheritsDispatchConfig && dispatchDefaults.parentThinkingLevel) {
-      args.push('--thinking', dispatchDefaults.parentThinkingLevel);
-    }
+    const thinking = resolveThinkingLevel(input.agent, {
+      thinkingLevelOverride: input.thinkingLevelOverride,
+      parentThinkingLevel: dispatchDefaults.parentThinkingLevel,
+    });
+    if (thinking) args.push('--thinking', thinking);
     if (input.agent.tools && input.agent.tools.length > 0) {
       args.push('--tools', input.agent.tools.join(','));
     }
@@ -78,6 +85,10 @@ export class SubprocessRunner implements AgentRunner {
       parentModel: input.parentModel,
       parentThinkingLevel: input.parentThinkingLevel,
     });
+    const thinkingLevel = resolveThinkingLevel(input.agent, {
+      thinkingLevelOverride: input.thinkingLevelOverride,
+      parentThinkingLevel: input.parentThinkingLevel,
+    });
 
     const result: SingleResult = {
       agent: input.agent.name,
@@ -88,6 +99,7 @@ export class SubprocessRunner implements AgentRunner {
       stderr: '',
       usage: emptyUsage(),
       model: input.agent.model ?? input.parentModel,
+      thinkingLevel,
     };
 
     let tmpPromptDir: string | null = null;

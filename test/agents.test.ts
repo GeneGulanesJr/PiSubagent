@@ -3,6 +3,11 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { parseToolList, loadAgentsFromDir, findNearestProjectAgentsDir } from '../src/agents.js';
+import {
+  parseThinkingLevel,
+  resolveThinkingLevel,
+  DEFAULT_SUBAGENT_THINKING,
+} from '../src/thinking.js';
 
 describe('parseToolList', () => {
   it('splits comma-string', () => {
@@ -18,6 +23,54 @@ describe('parseToolList', () => {
   it('returns undefined for empty input', () => {
     expect(parseToolList('')).toBeUndefined();
     expect(parseToolList([])).toBeUndefined();
+  });
+});
+
+describe('parseThinkingLevel', () => {
+  it.each(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])(
+    'accepts valid level %s',
+    (level) => {
+      expect(parseThinkingLevel(level)).toBe(level);
+    },
+  );
+
+  it('normalizes case and whitespace', () => {
+    expect(parseThinkingLevel('  HIGH ')).toBe('high');
+  });
+
+  it('returns undefined for invalid or absent values', () => {
+    expect(parseThinkingLevel('ultra')).toBeUndefined();
+    expect(parseThinkingLevel(42)).toBeUndefined();
+    expect(parseThinkingLevel(undefined)).toBeUndefined();
+  });
+});
+
+describe('resolveThinkingLevel', () => {
+  const pinned = { model: 'claude-sonnet-4-5' };
+
+  it('ladder: override > frontmatter > parent-inherit > default', () => {
+    expect(
+      resolveThinkingLevel(
+        { ...pinned, thinkingLevel: 'high' },
+        {
+          thinkingLevelOverride: 'off',
+          parentThinkingLevel: 'max',
+        },
+      ),
+    ).toBe('off');
+    expect(
+      resolveThinkingLevel({ ...pinned, thinkingLevel: 'high' }, { parentThinkingLevel: 'max' }),
+    ).toBe('high');
+    expect(resolveThinkingLevel(pinned, { parentThinkingLevel: 'low' })).toBe('medium');
+    expect(resolveThinkingLevel({}, { parentThinkingLevel: 'low' })).toBe('low');
+  });
+
+  it('no model anywhere and no parent level → undefined (child pi decides)', () => {
+    expect(resolveThinkingLevel({}, {})).toBeUndefined();
+  });
+
+  it('model pinned with no other signal → DEFAULT_SUBAGENT_THINKING', () => {
+    expect(resolveThinkingLevel(pinned, {})).toBe(DEFAULT_SUBAGENT_THINKING);
   });
 });
 
@@ -43,6 +96,20 @@ describe('loadAgentsFromDir', () => {
     expect(agents[0].model).toBe('claude-haiku-4-5');
     expect(agents[0].source).toBe('user');
     expect(agents[0].systemPrompt).toContain('fixture agent');
+  });
+
+  it('parses thinkingLevel frontmatter; invalid values are ignored', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, 'deep.md'),
+      '---\nname: deep\ndescription: d\nmodel: claude-sonnet-4-5\nthinkingLevel: high\n---\nbody',
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, 'broken.md'),
+      '---\nname: broken\ndescription: d\nthinkingLevel: ultra\n---\nbody',
+    );
+    const agents = loadAgentsFromDir(tmpDir, 'user');
+    expect(agents.find((a) => a.name === 'deep')?.thinkingLevel).toBe('high');
+    expect(agents.find((a) => a.name === 'broken')?.thinkingLevel).toBeUndefined();
   });
 
   it('skips files with missing name (defensive)', () => {

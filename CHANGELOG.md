@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Dynamic thinking-level resolution** (`src/thinking.ts`). Previously every
+  model-pinned agent silently ran at the child `pi` process's `max` default —
+  no `--thinking` flag was ever passed. Resolution order (most specific wins):
+  per-dispatch `thinkingLevel` on the tool call (single / `tasks` item /
+  `chain` item) → `thinkingLevel:` agent frontmatter → the parent session's
+  level (only when the agent also inherits the model) → `medium` default for
+  model-pinned agents. Bundled role defaults: `scout`/`librarian` = `low`,
+  `planner`/`reviewer` = `high`, all others inherit the `medium` default.
+  `SingleResult.thinkingLevel` reports the effective level per run.
+- Four new bundled agents:
+  - `debugger` (Sonnet, read-only) — diagnose failures, propose minimal fix.
+  - `test-writer` (Sonnet, read-only) — focused unit tests matching project conventions.
+  - `librarian` (Sonnet, web tools) — research, docs lookup, citations.
+  - `aws-architect` (Sonnet, read-only) — AWS Well-Architected review of IaC and deployment configs.
+
 ## [0.1.5] - 2026-09-23
 
 Build-infrastructure patch. No public-API or runtime changes. Major-version bumps for `lint-staged`, `@types/node`, `eslint`, and `typescript`, plus peer-dep and plugin cascade fixes that those bumps surfaced.

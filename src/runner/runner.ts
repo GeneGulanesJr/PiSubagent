@@ -7,8 +7,10 @@ export interface AgentRunInput {
   cwd: string;
   /** ctx.model.provider/id from the dispatching session; default model when agent.model unset. */
   parentModel?: string;
-  /** ctx.thinkingLevel from the dispatching session; inherited unless agent.model overrides. */
+  /** ctx.thinkingLevel from the dispatching session; inherited when the agent also inherits the model. */
   parentThinkingLevel?: ThinkingLevel;
+  /** Per-dispatch override from the tool call; beats frontmatter and parent. */
+  thinkingLevelOverride?: ThinkingLevel;
   /** Pre-substituted text replacing {previous} for chain steps. */
   resolvedTask?: string;
 }

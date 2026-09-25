@@ -4,8 +4,9 @@ import type { Message } from '@earendil-works/pi-ai';
 export interface SubagentParams {
   agent?: string;
   task?: string;
-  tasks?: Array<{ agent: string; task: string; cwd?: string }>;
-  chain?: Array<{ agent: string; task: string; cwd?: string }>;
+  thinkingLevel?: ThinkingLevel;
+  tasks?: Array<{ agent: string; task: string; cwd?: string; thinkingLevel?: ThinkingLevel }>;
+  chain?: Array<{ agent: string; task: string; cwd?: string; thinkingLevel?: ThinkingLevel }>;
   agentScope?: 'user' | 'project' | 'both';
   confirmProjectAgents?: boolean;
   cwd?: string;
@@ -32,6 +33,8 @@ export interface SingleResult {
   stderr: string;
   usage: UsageStats;
   model?: string;
+  /** Effective thinking level the run was launched with (see src/thinking.ts). */
+  thinkingLevel?: ThinkingLevel;
   stopReason?: string;
   errorMessage?: string;
   step?: number;
@@ -54,6 +57,8 @@ export interface AgentRunInput {
   cwd: string;
   parentModel?: string;
   parentThinkingLevel?: ThinkingLevel;
+  /** Per-dispatch override from the tool call; beats frontmatter and parent. */
+  thinkingLevelOverride?: ThinkingLevel;
   /** Pre-substituted text replacing {previous} for chain steps. */
   resolvedTask?: string;
 }
@@ -63,6 +68,8 @@ export interface AgentConfig {
   description: string;
   tools?: string[];
   model?: string;
+  /** Per-role thinking level from frontmatter; beats the dispatch default. */
+  thinkingLevel?: ThinkingLevel;
   systemPrompt: string;
   source: 'user' | 'project' | 'bundled';
   filePath: string;

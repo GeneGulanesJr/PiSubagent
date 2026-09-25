@@ -200,22 +200,54 @@ describe('SubprocessRunner.buildArgs (CLI flag composition)', () => {
     expect(args[idx + 1]).toBe('anthropic/claude-haiku-4-5');
   });
 
-  it('appends --thinking only when agent.model unset AND parentThinkingLevel provided', () => {
+  it('inherits parent thinking when agent has no model (dispatch-config inheritance)', () => {
     const runner = new SubprocessRunner({ spawnFn: noop });
-    const withInherit = runner.buildArgs(
+    const args = runner.buildArgs(
       { agent: baseAgent, task: 'x', cwd: '/tmp' },
       { parentThinkingLevel: 'low' },
     );
-    const idx = withInherit.indexOf('--thinking');
+    const idx = args.indexOf('--thinking');
     expect(idx).toBeGreaterThan(-1);
-    expect(withInherit[idx + 1]).toBe('low');
+    expect(args[idx + 1]).toBe('low');
+  });
 
-    // agent.model set → thinking NOT inherited
-    const withModel = runner.buildArgs(
+  it('omits --thinking when no model anywhere and parent provides no level', () => {
+    const runner = new SubprocessRunner({ spawnFn: noop });
+    const args = runner.buildArgs({ agent: baseAgent, task: 'x', cwd: '/tmp' }, {});
+    expect(args).not.toContain('--thinking');
+  });
+
+  it('model-pinned agent with no declared level gets DEFAULT_SUBAGENT_THINKING (medium), not pi max', () => {
+    const runner = new SubprocessRunner({ spawnFn: noop });
+    const args = runner.buildArgs(
       { agent: { ...baseAgent, model: 'claude-sonnet-4-5' }, task: 'x', cwd: '/tmp' },
       { parentThinkingLevel: 'low' },
     );
-    expect(withModel).not.toContain('--thinking');
+    const idx = args.indexOf('--thinking');
+    expect(idx).toBeGreaterThan(-1);
+    expect(args[idx + 1]).toBe('medium');
+  });
+
+  it('agent frontmatter thinkingLevel beats the default and parent inheritance', () => {
+    const runner = new SubprocessRunner({ spawnFn: noop });
+    const agent = { ...baseAgent, model: 'claude-sonnet-4-5', thinkingLevel: 'high' as const };
+    const args = runner.buildArgs(
+      { agent, task: 'x', cwd: '/tmp' },
+      { parentThinkingLevel: 'low' },
+    );
+    const idx = args.indexOf('--thinking');
+    expect(args[idx + 1]).toBe('high');
+  });
+
+  it('per-dispatch override beats frontmatter, default, and parent', () => {
+    const runner = new SubprocessRunner({ spawnFn: noop });
+    const agent = { ...baseAgent, model: 'claude-sonnet-4-5', thinkingLevel: 'high' as const };
+    const args = runner.buildArgs(
+      { agent, task: 'x', cwd: '/tmp', thinkingLevelOverride: 'off' },
+      { parentThinkingLevel: 'max' },
+    );
+    const idx = args.indexOf('--thinking');
+    expect(args[idx + 1]).toBe('off');
   });
 
   it('appends --tools comma-joined only when agent.tools present', () => {

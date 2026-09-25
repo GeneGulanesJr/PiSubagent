@@ -35,6 +35,7 @@ export async function runChain(
         task: step.task,
         cwd: step.cwd ?? ctx.cwd,
         resolvedTask,
+        thinkingLevelOverride: step.thinkingLevel,
         ...parentDefaults(ctx),
       },
       ctx.signal,

@@ -8,16 +8,26 @@ import { resolveBundledAgentsDir, discoverAgents, type AgentScope } from './agen
 import { execute, type DispatchContext, type ToolResultLike } from './dispatch/index.js';
 import { renderCall, renderResult } from './render.js';
 
+const THINKING_LEVEL_DESCRIPTION =
+  "Reasoning effort for this dispatch. Overrides the agent's frontmatter thinkingLevel and the default (medium for model-pinned agents; parent's level when the agent inherits the model).";
+
+const ThinkingLevelSchema = Type.Union(
+  ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].map((l) => Type.Literal(l)),
+  { description: THINKING_LEVEL_DESCRIPTION },
+);
+
 const TaskItem = Type.Object({
   agent: Type.String({ description: 'Name of the agent to invoke' }),
   task: Type.String({ description: 'Task to delegate to the agent' }),
   cwd: Type.Optional(Type.String({ description: 'Working directory for the agent process' })),
+  thinkingLevel: Type.Optional(ThinkingLevelSchema),
 });
 
 const ChainItem = Type.Object({
   agent: Type.String({ description: 'Name of the agent to invoke' }),
   task: Type.String({ description: 'Task with optional {previous} placeholder for prior output' }),
   cwd: Type.Optional(Type.String({ description: 'Working directory for the agent process' })),
+  thinkingLevel: Type.Optional(ThinkingLevelSchema),
 });
 
 const AgentScopeSchema = Type.Union(
@@ -34,6 +44,7 @@ const SubagentParamsSchema = Type.Object({
     Type.String({ description: 'Name of the agent to invoke (for single mode)' }),
   ),
   task: Type.Optional(Type.String({ description: 'Task to delegate (for single mode)' })),
+  thinkingLevel: Type.Optional(ThinkingLevelSchema),
   tasks: Type.Optional(
     Type.Array(TaskItem, { description: 'Array of {agent, task} for parallel execution' }),
   ),
@@ -66,6 +77,8 @@ export default function (pi: ExtensionAPI) {
       'Modes: single (agent + task), parallel (tasks array), chain (sequential with {previous} placeholder).',
       "Default agent scope is 'user' (from ~/.pi/agent/agents).",
       "To enable project-local agents in .pi/agents, set agentScope: 'both' (or 'project').",
+      'Optional thinkingLevel (off…max) per dispatch or per task scales reasoning effort;',
+      'omit for the role default.',
     ].join(' '),
     parameters: SubagentParamsSchema,
 

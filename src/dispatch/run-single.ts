@@ -22,6 +22,7 @@ export async function runSingle(
       agent: agentCfg,
       task: params.task!,
       cwd: params.cwd ?? ctx.cwd,
+      thinkingLevelOverride: params.thinkingLevel,
       ...parentDefaults(ctx),
     },
     ctx.signal,

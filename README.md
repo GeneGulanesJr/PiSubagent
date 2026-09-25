@@ -10,8 +10,9 @@ Pi subagent tool. Single command, three modes.
 
 PiSubagent lets a parent Pi session delegate work to focused subagents that
 run in isolated subprocess contexts. It registers one `subagent` tool with
-three modes — `single`, `parallel`, `chain` — and ships with four ready-made
-agents (`scout`, `planner`, `reviewer`, `worker`). Subagents are resolved from
+three modes — `single`, `parallel`, `chain` — and ships with eight ready-made
+agents (`scout`, `planner`, `reviewer`, `debugger`, `test-writer`, `librarian`,
+`aws-architect`, `worker`). Subagents are resolved from
 project-local `.pi/agents/`, user-level `~/.pi/agent/agents/`, and the
 bundled defaults, with a one-time confirmation prompt before untrusted
 project agents run.
@@ -23,6 +24,12 @@ Ask Pi to use the `subagent` tool:
 - **Single**: `subagent(agent: "scout", task: "find auth code")`
 - **Parallel**: `subagent(tasks: [{agent:"scout", task:"find models"}, {agent:"scout", task:"find providers"}])`
 - **Chain**: `subagent(chain: [{agent:"scout", task:"..."}, {agent:"planner", task:"...{previous}..."}])`
+
+Any dispatch (or any `tasks` / `chain` item) may pass an optional
+`thinkingLevel` (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`)
+to scale reasoning effort for that specific task — e.g.
+`subagent(agent: "debugger", task: "...", thinkingLevel: "max")` for a gnarly
+repro. Omit it and the role default applies (see below).
 
 ## Modes
 
@@ -55,10 +62,14 @@ plan. Reach for it before opening an issue.
 
 ## Built-in agents
 
-- `scout` (Haiku, read-only) — fast recon
-- `planner` (Sonnet, read-only) — implementation plans
-- `reviewer` (Sonnet, read-only) — code review
-- `worker` (Sonnet, full tools) — general implementation
+- `scout` (Haiku, thinking `low`) — fast recon
+- `planner` (Sonnet, thinking `high`) — implementation plans
+- `reviewer` (Sonnet, thinking `high`) — code review
+- `debugger` (Sonnet) — diagnose failures, propose minimal fix
+- `test-writer` (Sonnet) — focused unit tests
+- `librarian` (Sonnet, thinking `low`, web tools) — research and docs lookup with citations
+- `aws-architect` (Sonnet) — AWS Well-Architected review of IaC
+- `worker` (Sonnet) — general implementation
 
 Override by dropping a same-named `*.md` in `~/.pi/agent/agents/`.
 
@@ -84,6 +95,12 @@ Frontmatter fields:
 - `description` (required) — what the parent LLM reads to pick this agent.
 - `tools` (optional) — comma-separated list; omit to inherit full tool set.
 - `model` (optional) — omit to inherit the parent's model + thinking level.
+- `thinkingLevel` (optional) — `off|minimal|low|medium|high|xhigh|max`. Per-role
+  reasoning effort. Resolution order (most specific wins): the dispatch call's
+  `thinkingLevel` → this frontmatter field → the parent's level (only when the
+  agent also inherits the model) → `medium` default for model-pinned agents.
+  Without any of these the child `pi` process would silently run at its own
+  `max` default.
 
 Override precedence (most-specific wins): **project > user > bundled**.
 Project agents live in `.pi/agents/` next to a `pi` trust boundary and
