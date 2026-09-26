@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.2.0] - 2026-09-25
 
-Runtime-robustness minor: six per-dispatch controls over child subprocesses — timeout, retries, output spill, usage rollups, structured output, and session persistence/resume. 257 tests across 23 files, all green.
+Runtime-robustness minor: six per-dispatch controls over child subprocesses — timeout, retries, output spill, usage rollups, structured output, and session persistence/resume. 261 tests across 24 files, all green.
 
 ### Added
 
