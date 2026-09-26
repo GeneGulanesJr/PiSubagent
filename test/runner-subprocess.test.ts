@@ -366,7 +366,7 @@ describe('SubprocessRunner.run hardening', () => {
     ]);
     const result = await promise;
 
-    expect(result.stderr).toContain('[truncated: stdout exceeded 1MB]');
+    expect(result.stderr).toMatch(/\[truncated: stdout exceeded 1MB — full output: .+\.log\]/);
     // Only the 2 valid lines before truncation should have made it in.
     expect(result.messages).toHaveLength(2);
   });

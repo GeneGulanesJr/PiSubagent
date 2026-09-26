@@ -541,7 +541,7 @@ describe('SubprocessRunner.run — stdout 1MB buffer cap', () => {
     const result = await promise;
 
     // Truncation marker appears exactly once.
-    expect(result.stderr).toContain('[truncated: stdout exceeded 1MB]');
+    expect(result.stderr).toMatch(/\[truncated: stdout exceeded 1MB — full output: .+\.log\]/);
     expect((result.stderr.match(/truncated: stdout exceeded 1MB/g) ?? []).length).toBe(1);
     // Only the first two valid lines (pre-overflow) survive.
     expect(result.messages).toHaveLength(2);

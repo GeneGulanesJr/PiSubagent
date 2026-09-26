@@ -1,5 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import type { ThinkingLevel } from '@earendil-works/pi-agent-core';
 import type { Message } from '@earendil-works/pi-ai';
 import type { AgentRunner, AgentRunInput } from '../runner.js';
@@ -13,6 +15,22 @@ const MAX_BUFFER_BYTES = 1024 * 1024;
 
 function emptyUsage(): UsageStats {
   return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0 };
+}
+
+/**
+ * Create the spill artifact for stdout overflow: a fresh mkdtemp dir in the
+ * OS tmpdir holding one `<agent>.log` file. The dir is intentionally NOT
+ * cleaned up — the file is the caller's artifact. Returns null when tmpdir
+ * creation fails, in which case the runner falls back to plain truncation.
+ */
+function createSpillFile(agentName: string): string | null {
+  try {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pisubagent-spill-'));
+    const safe = agentName.replace(/[^a-zA-Z0-9_-]/g, '_');
+    return path.join(dir, `${safe}.log`);
+  } catch {
+    return null;
+  }
 }
 
 export interface SubprocessRunnerOptions {
@@ -107,6 +125,7 @@ export class SubprocessRunner implements AgentRunner {
     let didTimeOut = false;
     let droppedJsonlCount = 0;
     let onUpdateErrorLogged = false;
+    let spillPath: string | null = null;
 
     /**
      * Append to stderr but never grow past MAX_BUFFER_BYTES. Used by both
@@ -148,7 +167,6 @@ export class SubprocessRunner implements AgentRunner {
         });
 
         let buffer = '';
-        let stdoutTruncated = false;
 
         const ingest = (msg: Message) => {
           result.messages.push(msg);
@@ -208,14 +226,35 @@ export class SubprocessRunner implements AgentRunner {
         if (proc.stdout) {
           proc.stdout.on('data', (chunk: Buffer | string) => {
             const text = chunk.toString();
-            // Bug 2: once the line buffer exceeds the cap, stop growing
-            // it and stop splitting/processing new stdout. Append a
-            // one-time stderr marker so operators see the truncation.
+            // Spill active: raw bytes go to the artifact file; the
+            // in-memory buffer stays capped at MAX_BUFFER_BYTES.
+            if (spillPath !== null) {
+              try {
+                fs.appendFileSync(spillPath, text);
+              } catch {
+                /* best-effort: a failed spill append degrades to dropping */
+              }
+              return;
+            }
+            // Bug 2 / ADR-0002: once the line buffer exceeds the cap, stop
+            // growing it and stop splitting/processing new stdout. The
+            // overflow is spilled to a tmpdir artifact (when creatable) so
+            // the full output is never silently lost; otherwise fall back
+            // to plain truncation with a one-time stderr marker.
             if (buffer.length > MAX_BUFFER_BYTES) {
-              if (!stdoutTruncated) {
-                stdoutTruncated = true;
+              spillPath = createSpillFile(input.agent.name);
+              if (spillPath !== null) {
+                result.outputFile = spillPath;
+                try {
+                  fs.appendFileSync(spillPath, buffer);
+                } catch {
+                  /* ignore */
+                }
+                appendStderr(`[truncated: stdout exceeded 1MB — full output: ${spillPath}]\n`);
+              } else {
                 appendStderr(`[truncated: stdout exceeded 1MB]\n`);
               }
+              buffer = '';
               return;
             }
             buffer += text;

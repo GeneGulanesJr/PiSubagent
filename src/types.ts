@@ -58,6 +58,8 @@ export interface SingleResult {
   timedOut?: boolean;
   /** Total attempts made when retries were configured (absent when 1 attempt). */
   attempts?: number;
+  /** Path to the full stdout artifact when output exceeded the 1MB in-memory cap. */
+  outputFile?: string;
   errorMessage?: string;
   step?: number;
   /** True while this agent is still executing (progress snapshots); false once settled. */
