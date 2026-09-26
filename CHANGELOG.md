@@ -5,7 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.0] - 2026-09-25
+
+Runtime-robustness minor: six per-dispatch controls over child subprocesses — timeout, retries, output spill, usage rollups, structured output, and session persistence/resume. 257 tests across 23 files, all green.
 
 ### Added
 
@@ -18,11 +20,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   model-pinned agents. Bundled role defaults: `scout`/`librarian` = `low`,
   `planner`/`reviewer` = `high`, all others inherit the `medium` default.
   `SingleResult.thinkingLevel` reports the effective level per run.
+- **Per-dispatch timeout** (`timeoutMs`, minimum 1000 ms). Wall-clock budget for a
+  child run; single params, `tasks[]` items, and `chain[]` items all accept it.
+  On expiry the child gets SIGTERM (SIGKILL after 5s) and `SingleResult.timedOut`
+  is set, so timeouts are distinguishable from user aborts. Per-dispatch beats
+  the runner-level `runTimeoutMs`. Also fixes a timer leak: the runner-level
+  timeout timer is now cleared when the process exits early and `unref()`'d.
+- **Per-dispatch retries** (`retries`, 0–3, default 0) via a shared
+  `runWithRetries` helper. Failed results are retried up to N times; user
+  aborts (`ctx.signal` already aborted) are never retried. `SingleResult.attempts`
+  reports the total when more than one attempt was made. No backoff delay in v1.
+- **Stdout spill artifact.** When child stdout exceeds the 1 MB in-memory cap,
+  overflow bytes are spilled to `<tmpdir>/pisubagent-spill-*/<agent>.log` instead
+  of being dropped; `SingleResult.outputFile` points at the full log (including
+  the buffered bytes and the crossing chunk). Falls back to plain truncation
+  when the temp dir can't be created. The spill dir is intentionally not
+  cleaned up — it's the caller's artifact.
+- **Usage rollups.** `SubagentDetails.usage` aggregates per-run `UsageStats` for
+  parallel and chain dispatches: counters sum, `contextTokens` (a gauge) takes
+  the max. Rolled up on parallel completion and on both chain outcomes
+  (short-circuit failure and completion). Single mode unchanged.
+- **Structured output** (`outputSchema`, single mode, v1). JSON Schema contract:
+  the child is instructed to reply with pure JSON, which is fence-stripped,
+  parsed, and lightly validated (top-level `type`, `required`, per-property
+  `type`). Value lands on `SingleResult.data`; failures set an explicit
+  `SingleResult.structuredError` (parse/validation detail) without flipping
+  the dispatch `isError`. Full JSON-Schema validation is future work.
+- **Session persistence / resume.** `session: true` persists the child run as a
+  pi session (`--session-id <uuid>`) and reports `SingleResult.sessionId`;
+  `resume: "<id|path>"` continues a prior session (`--session`) and wins over
+  `session`. Default remains ephemeral (`--no-session`).
 - Four new bundled agents:
   - `debugger` (Sonnet, read-only) — diagnose failures, propose minimal fix.
   - `test-writer` (Sonnet, read-only) — focused unit tests matching project conventions.
   - `librarian` (Sonnet, web tools) — research, docs lookup, citations.
   - `aws-architect` (Sonnet, read-only) — AWS Well-Architected review of IaC and deployment configs.
+
+### Fixed
+
+- `isFailedResult` explicitly counts `timedOut` results (previously classified
+  only via `stopReason: "aborted"`).
+- Spill: the chunk that crosses the 1 MB cap is appended to the artifact (was
+  dropped at the boundary).
 
 ## [0.1.5] - 2026-09-23
 

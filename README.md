@@ -31,6 +31,19 @@ to scale reasoning effort for that specific task — e.g.
 `subagent(agent: "debugger", task: "...", thinkingLevel: "max")` for a gnarly
 repro. Omit it and the role default applies (see below).
 
+Any dispatch (or item) also accepts runtime knobs:
+
+- `timeoutMs` (min 1000) — wall-clock budget for the child. On expiry the child
+  is killed (SIGTERM → SIGKILL after 5s) and the result is marked `timedOut`.
+- `retries` (0–3, default 0) — failed runs are retried immediately; user aborts
+  never are. `attempts` on the result reports the total when >1.
+- `outputSchema` (single mode) — JSON Schema contract. The child is instructed
+  to reply with pure JSON; the parsed value lands on `data`, and any
+  parse/validation failure lands explicitly on `structuredError`.
+- `session: true` — persist the run as a pi session and report its
+  `sessionId`; `resume: "<id|path>"` continues a prior session. Default runs
+  are ephemeral (`--no-session`).
+
 ## Modes
 
 | Mode     | Shape              | When to use                                                         | Concurrency                  |
@@ -56,8 +69,12 @@ plan. Reach for it before opening an issue.
   spawns are in flight at any moment.
 - `PER_TASK_OUTPUT_CAP = 50 * 1024` bytes — each task's parent-facing summary
   is capped; full output is preserved verbatim in `details.results[i].messages`.
-- `runTimeoutMs` — optional kill switch with no default; when set, the run is
-  aborted once exceeded.
+- stdout cap = 1 MB per run — beyond it, bytes spill to
+  `<tmpdir>/pisubagent-spill-*/<agent>.log` and `SingleResult.outputFile`
+  points at the full log (spill dirs are not auto-cleaned).
+- `runTimeoutMs` — optional runner-level kill switch with no default; a
+  per-dispatch `timeoutMs` overrides it. Either way the run is killed once
+  exceeded and the result is marked `timedOut`.
 - `engines.node >= 22` — required at install time.
 
 ## Built-in agents
@@ -110,14 +127,16 @@ when the project is untrusted. See `agents/` for full examples and
 
 ## Troubleshooting
 
-| Message                                           | Meaning                                                                                                                            |
-| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `Invalid parameters. Provide exactly one mode: …` | Call had zero or more than one of `{agent, task}`, `{tasks}`, `{chain}`.                                                           |
-| `Canceled: project-local agents not approved.`    | User denied the prompt, or `hasUI === false` on an untrusted project. Pass `confirmProjectAgents: false` to skip when intentional. |
-| `Too many parallel tasks (N). Max is 8.`          | `tasks.length > MAX_PARALLEL_TASKS`. Split into smaller batches.                                                                   |
-| `[Output truncated: N bytes omitted. …]`          | A task's parent-facing summary exceeded `PER_TASK_OUTPUT_CAP`. Full output is preserved in `details.results[i].messages`.          |
-| `[subprocess: N malformed JSONL lines dropped]`   | The child `pi` process emitted lines that weren't valid JSONL events. Inspect the agent's prompt — usually stray print output.     |
-| `run timeout after Xms`                           | `runTimeoutMs` was set and the run exceeded it. Raise the limit or shorten the task.                                               |
+| Message                                                  | Meaning                                                                                                                                                                 |
+| -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Invalid parameters. Provide exactly one mode: …`        | Call had zero or more than one of `{agent, task}`, `{tasks}`, `{chain}`.                                                                                                |
+| `Canceled: project-local agents not approved.`           | User denied the prompt, or `hasUI === false` on an untrusted project. Pass `confirmProjectAgents: false` to skip when intentional.                                      |
+| `Too many parallel tasks (N). Max is 8.`                 | `tasks.length > MAX_PARALLEL_TASKS`. Split into smaller batches.                                                                                                        |
+| `[Output truncated: N bytes omitted. …]`                 | A task's parent-facing summary exceeded `PER_TASK_OUTPUT_CAP`. Full output is preserved in `details.results[i].messages`.                                               |
+| `[subprocess: N malformed JSONL lines dropped]`          | The child `pi` process emitted lines that weren't valid JSONL events. Inspect the agent's prompt — usually stray print output.                                          |
+| `run timeout after Xms`                                  | The per-dispatch `timeoutMs` (or runner-level `runTimeoutMs`) was exceeded; the child was killed and the result marked `timedOut`. Raise the limit or shorten the task. |
+| `[truncated: stdout exceeded 1MB — full output: <path>]` | The child's stdout crossed the 1 MB in-memory cap; the full output was spilled to `<path>` (also on `results[i].outputFile`).                                           |
+| `structured output: …` (in `results[i].structuredError`) | The reply failed the `outputSchema` contract (parse or validation). The dispatch still succeeded — re-dispatch or inspect `results[i].messages`.                        |
 
 ## Cancellation
 
