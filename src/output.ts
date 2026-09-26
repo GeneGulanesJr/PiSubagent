@@ -157,7 +157,12 @@ export function progressSnippet(messages: readonly Message[]): string {
 }
 
 export function isFailedResult(result: SingleResult): boolean {
-  return result.exitCode !== 0 || result.stopReason === 'error' || result.stopReason === 'aborted';
+  return (
+    result.exitCode !== 0 ||
+    result.stopReason === 'error' ||
+    result.stopReason === 'aborted' ||
+    result.timedOut === true
+  );
 }
 
 export function getResultOutput(result: SingleResult): string {
