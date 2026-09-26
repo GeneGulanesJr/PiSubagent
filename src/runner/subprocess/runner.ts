@@ -318,7 +318,11 @@ export class SubprocessRunner implements AgentRunner {
         // Per-dispatch timeout beats the runner-level default. On expiry:
         // SIGTERM now, SIGKILL after 5s grace (unref'd), and the result is
         // marked timedOut so callers can distinguish timeout from user abort.
-        const effectiveTimeoutMs = input.timeoutMs ?? this.runTimeoutMs;
+        const requested = input.timeoutMs ?? this.runTimeoutMs;
+        // Defensive floor: a non-positive timeout must not silently disable
+        // the kill switch (the schema enforces min 1000, but direct callers
+        // of run() can bypass it).
+        const effectiveTimeoutMs = requested !== undefined ? Math.max(requested, 1) : undefined;
         let timeoutHandle: NodeJS.Timeout | undefined;
         if (effectiveTimeoutMs !== undefined && effectiveTimeoutMs > 0) {
           timeoutHandle = setTimeout(() => {

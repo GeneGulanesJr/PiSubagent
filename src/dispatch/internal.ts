@@ -117,9 +117,19 @@ export async function runWithRetries(
   const maxAttempts = 1 + Math.max(0, Math.min(retries ?? 0, MAX_RETRIES));
   let result = await runner.run(input, ctx.signal, onPartial);
   let attempt = 1;
+  // Spend accumulates across attempts — discarding failed attempts' usage
+  // would under-report true cost exactly when retries fire.
+  const usage: UsageStats = { ...result.usage };
   while (isFailedResult(result) && attempt < maxAttempts && !ctx.signal?.aborted) {
     attempt += 1;
     result = await runner.run(input, ctx.signal, onPartial);
+    usage.input += result.usage.input;
+    usage.output += result.usage.output;
+    usage.cacheRead += result.usage.cacheRead;
+    usage.cacheWrite += result.usage.cacheWrite;
+    usage.cost += result.usage.cost;
+    usage.contextTokens = Math.max(usage.contextTokens, result.usage.contextTokens);
+    usage.turns += result.usage.turns;
   }
-  return attempt > 1 ? { ...result, attempts: attempt } : result;
+  return attempt > 1 ? { ...result, attempts: attempt, usage } : result;
 }

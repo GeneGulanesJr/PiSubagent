@@ -62,6 +62,13 @@ Runtime-robustness minor: six per-dispatch controls over child subprocesses — 
   only via `stopReason: "aborted"`).
 - Spill: the chunk that crosses the 1 MB cap is appended to the artifact (was
   dropped at the boundary).
+- `runWithRetries` accumulates usage across attempts — failed attempts' spend
+  is no longer discarded from `usage` rollups.
+- `validateAgainstSchema` uses `Object.hasOwn` for `required` checks —
+  `Object.prototype` keys ('toString', 'constructor') no longer satisfy
+  required properties vacuously.
+- `timeoutMs` has a defensive runtime floor (1 ms) so non-schema callers
+  passing 0/negative cannot silently disable the kill switch.
 
 ## [0.1.5] - 2026-09-23
 

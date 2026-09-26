@@ -74,7 +74,9 @@ export function validateAgainstSchema(
         : {};
     const obj = (value ?? {}) as Record<string, unknown>;
     for (const key of required) {
-      if (!(key in obj) || obj[key] === undefined) {
+      // Object.hasOwn: `key in obj` would match Object.prototype props
+      // ('toString', 'constructor'), letting required keys pass vacuously.
+      if (!Object.hasOwn(obj, key) || obj[key] === undefined) {
         return `missing required property: ${key}`;
       }
     }
