@@ -2,7 +2,7 @@ import { isFailedResult, getResultOutput, truncateParallelOutput } from '../outp
 import type { AgentRunner } from '../runner/runner.js';
 import type { SubagentParams, AgentConfig, SingleResult } from '../types.js';
 import { MAX_CONCURRENCY, MAX_PARALLEL_TASKS, PER_TASK_OUTPUT_CAP } from './limits.js';
-import { baseDetails, parentDefaults, stubResult } from './internal.js';
+import { baseDetails, parentDefaults, runWithRetries, stubResult } from './internal.js';
 import { createProgressEmitter, snapshot } from './progress.js';
 import type { DispatchContext, ToolResultLike } from './types.js';
 
@@ -42,26 +42,26 @@ export async function runParallel(
     await Promise.all(
       tasks.slice(batchStart, batchEnd).map((t, j) => {
         const i = batchStart + j;
-        return runner
-          .run(
-            {
-              agent: lookup(t.agent),
-              task: t.task,
-              cwd: t.cwd ?? ctx.cwd,
-              thinkingLevelOverride: t.thinkingLevel,
-              timeoutMs: t.timeoutMs,
-              ...parentDefaults(ctx),
-            },
-            ctx.signal,
-            (partial) => {
-              results[i] = { ...partial, running: true };
-              emit?.(snapshot('parallel', base, results, tasks.length));
-            },
-          )
-          .then((final) => {
-            results[i] = { ...final, running: false };
+        return runWithRetries(
+          runner,
+          {
+            agent: lookup(t.agent),
+            task: t.task,
+            cwd: t.cwd ?? ctx.cwd,
+            thinkingLevelOverride: t.thinkingLevel,
+            timeoutMs: t.timeoutMs,
+            ...parentDefaults(ctx),
+          },
+          ctx,
+          t.retries,
+          (partial) => {
+            results[i] = { ...partial, running: true };
             emit?.(snapshot('parallel', base, results, tasks.length));
-          });
+          },
+        ).then((final) => {
+          results[i] = { ...final, running: false };
+          emit?.(snapshot('parallel', base, results, tasks.length));
+        });
       }),
     );
   }

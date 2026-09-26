@@ -8,6 +8,8 @@ import type {
   UsageStats,
 } from '../types.js';
 import type { DispatchContext } from './types.js';
+import type { AgentRunner, AgentRunInput } from '../runner/runner.js';
+import { isFailedResult } from '../output.js';
 
 /**
  * Internal helpers shared by the per-mode runners (`run-single`,
@@ -68,3 +70,29 @@ function stubResult(agentCfg: AgentConfig, task: string): SingleResult {
 }
 
 export { baseDetails, parentDefaults, stubResult };
+
+/** Hard cap on retries regardless of what the schema/caller passes. */
+const MAX_RETRIES = 3;
+
+/**
+ * Run once, retrying failed results up to `retries` times. A user abort
+ * (ctx.signal already aborted) is never retried. The returned result
+ * carries `attempts` when more than one attempt was made. No backoff
+ * delay in v1 — retries are immediate.
+ */
+export async function runWithRetries(
+  runner: AgentRunner,
+  input: AgentRunInput,
+  ctx: DispatchContext,
+  retries: number | undefined,
+  onPartial?: (partial: SingleResult) => void,
+): Promise<SingleResult> {
+  const maxAttempts = 1 + Math.max(0, Math.min(retries ?? 0, MAX_RETRIES));
+  let result = await runner.run(input, ctx.signal, onPartial);
+  let attempt = 1;
+  while (isFailedResult(result) && attempt < maxAttempts && !ctx.signal?.aborted) {
+    attempt += 1;
+    result = await runner.run(input, ctx.signal, onPartial);
+  }
+  return attempt > 1 ? { ...result, attempts: attempt } : result;
+}

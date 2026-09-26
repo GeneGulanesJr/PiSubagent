@@ -7,7 +7,7 @@ import {
 import type { AgentRunner } from '../runner/runner.js';
 import type { SubagentParams, AgentConfig, SingleResult } from '../types.js';
 import { PER_TASK_OUTPUT_CAP } from './limits.js';
-import { baseDetails, parentDefaults, stubResult } from './internal.js';
+import { baseDetails, parentDefaults, runWithRetries, stubResult } from './internal.js';
 import { createProgressEmitter, snapshot } from './progress.js';
 import type { DispatchContext, ToolResultLike } from './types.js';
 
@@ -29,7 +29,8 @@ export async function runChain(
     const resolvedTask = step.task.replace(/\{previous\}/g, previousOutput);
     results.push(stubResult(lookup(step.agent), step.task));
     emit?.(snapshot('chain', base, results, steps.length));
-    const result = await runner.run(
+    const result = await runWithRetries(
+      runner,
       {
         agent: lookup(step.agent),
         task: step.task,
@@ -39,7 +40,8 @@ export async function runChain(
         timeoutMs: step.timeoutMs,
         ...parentDefaults(ctx),
       },
-      ctx.signal,
+      ctx,
+      step.retries,
       (partial) => {
         results[i] = { ...partial, running: true };
         emit?.(snapshot('chain', base, results, steps.length));

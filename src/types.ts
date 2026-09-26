@@ -7,12 +7,15 @@ export interface SubagentParams {
   thinkingLevel?: ThinkingLevel;
   /** Wall-clock budget in ms for the child process (single mode). */
   timeoutMs?: number;
+  /** Retry attempts for a failed child run (single mode). 0–3, default 0. */
+  retries?: number;
   tasks?: Array<{
     agent: string;
     task: string;
     cwd?: string;
     thinkingLevel?: ThinkingLevel;
     timeoutMs?: number;
+    retries?: number;
   }>;
   chain?: Array<{
     agent: string;
@@ -20,6 +23,7 @@ export interface SubagentParams {
     cwd?: string;
     thinkingLevel?: ThinkingLevel;
     timeoutMs?: number;
+    retries?: number;
   }>;
   agentScope?: 'user' | 'project' | 'both';
   confirmProjectAgents?: boolean;
@@ -52,6 +56,8 @@ export interface SingleResult {
   stopReason?: string;
   /** True when the run was ended by the per-dispatch/runner timeout (not user abort). */
   timedOut?: boolean;
+  /** Total attempts made when retries were configured (absent when 1 attempt). */
+  attempts?: number;
   errorMessage?: string;
   step?: number;
   /** True while this agent is still executing (progress snapshots); false once settled. */

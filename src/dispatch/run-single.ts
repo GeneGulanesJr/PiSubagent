@@ -1,7 +1,7 @@
 import { getFinalOutput, isFailedResult } from '../output.js';
 import type { AgentRunner } from '../runner/runner.js';
 import type { SubagentParams, AgentConfig, SingleResult } from '../types.js';
-import { baseDetails, parentDefaults, stubResult } from './internal.js';
+import { baseDetails, parentDefaults, runWithRetries, stubResult } from './internal.js';
 import { createProgressEmitter, snapshot } from './progress.js';
 import type { DispatchContext, ToolResultLike } from './types.js';
 
@@ -17,7 +17,8 @@ export async function runSingle(
   const results: SingleResult[] = [stubResult(agentCfg, params.task!)];
   const emit = createProgressEmitter(ctx.onUpdate, ctx.progressIntervalMs);
   emit?.(snapshot('single', base, results, 1));
-  const result = await runner.run(
+  const result = await runWithRetries(
+    runner,
     {
       agent: agentCfg,
       task: params.task!,
@@ -26,7 +27,8 @@ export async function runSingle(
       timeoutMs: params.timeoutMs,
       ...parentDefaults(ctx),
     },
-    ctx.signal,
+    ctx,
+    params.retries,
     (partial) => {
       results[0] = { ...partial, running: true };
       emit?.(snapshot('single', base, results, 1));

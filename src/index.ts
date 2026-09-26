@@ -23,12 +23,20 @@ const TimeoutMsSchema = Type.Optional(
   Type.Number({ minimum: 1000, description: TIMEOUT_MS_DESCRIPTION }),
 );
 
+const RETRIES_DESCRIPTION =
+  'Retry a failed child run up to N times (0–3, default 0). User aborts are never retried.';
+
+const RetriesSchema = Type.Optional(
+  Type.Number({ minimum: 0, maximum: 3, description: RETRIES_DESCRIPTION }),
+);
+
 const TaskItem = Type.Object({
   agent: Type.String({ description: 'Name of the agent to invoke' }),
   task: Type.String({ description: 'Task to delegate to the agent' }),
   cwd: Type.Optional(Type.String({ description: 'Working directory for the agent process' })),
   thinkingLevel: Type.Optional(ThinkingLevelSchema),
   timeoutMs: TimeoutMsSchema,
+  retries: RetriesSchema,
 });
 
 const ChainItem = Type.Object({
@@ -37,6 +45,7 @@ const ChainItem = Type.Object({
   cwd: Type.Optional(Type.String({ description: 'Working directory for the agent process' })),
   thinkingLevel: Type.Optional(ThinkingLevelSchema),
   timeoutMs: TimeoutMsSchema,
+  retries: RetriesSchema,
 });
 
 const AgentScopeSchema = Type.Union(
@@ -55,6 +64,7 @@ const SubagentParamsSchema = Type.Object({
   task: Type.Optional(Type.String({ description: 'Task to delegate (for single mode)' })),
   thinkingLevel: Type.Optional(ThinkingLevelSchema),
   timeoutMs: TimeoutMsSchema,
+  retries: RetriesSchema,
   tasks: Type.Optional(
     Type.Array(TaskItem, { description: 'Array of {agent, task} for parallel execution' }),
   ),
