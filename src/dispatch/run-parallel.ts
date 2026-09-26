@@ -2,7 +2,7 @@ import { isFailedResult, getResultOutput, truncateParallelOutput } from '../outp
 import type { AgentRunner } from '../runner/runner.js';
 import type { SubagentParams, AgentConfig, SingleResult } from '../types.js';
 import { MAX_CONCURRENCY, MAX_PARALLEL_TASKS, PER_TASK_OUTPUT_CAP } from './limits.js';
-import { baseDetails, parentDefaults, runWithRetries, stubResult } from './internal.js';
+import { baseDetails, parentDefaults, runWithRetries, stubResult, sumUsage } from './internal.js';
 import { createProgressEmitter, snapshot } from './progress.js';
 import type { DispatchContext, ToolResultLike } from './types.js';
 
@@ -83,7 +83,7 @@ export async function runParallel(
         text: `Parallel: ${successCount}/${results.length} succeeded\n\n${summaries.join('\n\n---\n\n')}`,
       },
     ],
-    details: { ...base, results },
+    details: { ...base, results, usage: sumUsage(results) },
     isError: successCount < results.length,
   };
 }

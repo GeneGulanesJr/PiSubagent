@@ -69,6 +69,33 @@ function stubResult(agentCfg: AgentConfig, task: string): SingleResult {
   };
 }
 
+/**
+ * Aggregate usage across results. Counters (input/output/cache/cacheWrite/
+ * cost/turns) sum; `contextTokens` is a gauge (peak context), so it takes
+ * the max rather than a misleading sum.
+ */
+export function sumUsage(results: SingleResult[]): UsageStats {
+  const total: UsageStats = {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    cost: 0,
+    contextTokens: 0,
+    turns: 0,
+  };
+  for (const r of results) {
+    total.input += r.usage.input;
+    total.output += r.usage.output;
+    total.cacheRead += r.usage.cacheRead;
+    total.cacheWrite += r.usage.cacheWrite;
+    total.cost += r.usage.cost;
+    total.contextTokens = Math.max(total.contextTokens, r.usage.contextTokens);
+    total.turns += r.usage.turns;
+  }
+  return total;
+}
+
 export { baseDetails, parentDefaults, stubResult };
 
 /** Hard cap on retries regardless of what the schema/caller passes. */

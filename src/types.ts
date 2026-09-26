@@ -71,6 +71,8 @@ export interface SubagentDetails {
   agentScope: 'user' | 'project' | 'both';
   projectAgentsDir: string | null;
   results: SingleResult[];
+  /** Aggregate usage across results (parallel/chain only; absent for single). */
+  usage?: UsageStats;
 }
 
 export type OnUpdateCallback = (partial: AgentToolResult<SubagentDetails>) => void;

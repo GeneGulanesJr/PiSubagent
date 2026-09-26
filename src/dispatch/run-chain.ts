@@ -7,7 +7,7 @@ import {
 import type { AgentRunner } from '../runner/runner.js';
 import type { SubagentParams, AgentConfig, SingleResult } from '../types.js';
 import { PER_TASK_OUTPUT_CAP } from './limits.js';
-import { baseDetails, parentDefaults, runWithRetries, stubResult } from './internal.js';
+import { baseDetails, parentDefaults, runWithRetries, stubResult, sumUsage } from './internal.js';
 import { createProgressEmitter, snapshot } from './progress.js';
 import type { DispatchContext, ToolResultLike } from './types.js';
 
@@ -58,7 +58,7 @@ export async function runChain(
             text: `Chain stopped at step ${i + 1} (${step.agent}): ${getResultOutput(result)}`,
           },
         ],
-        details: { ...base, results },
+        details: { ...base, results, usage: sumUsage(results) },
         isError: true,
       };
     }
@@ -68,7 +68,7 @@ export async function runChain(
   const final = results[results.length - 1];
   return {
     content: [{ type: 'text', text: getFinalOutput(final.messages) || '(no output)' }],
-    details: { ...base, results },
+    details: { ...base, results, usage: sumUsage(results) },
     isError: false,
   };
 }
