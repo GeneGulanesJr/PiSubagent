@@ -65,6 +65,12 @@ const SubagentParamsSchema = Type.Object({
   thinkingLevel: Type.Optional(ThinkingLevelSchema),
   timeoutMs: TimeoutMsSchema,
   retries: RetriesSchema,
+  outputSchema: Type.Optional(
+    Type.Record(Type.String(), Type.Unknown(), {
+      description:
+        'JSON Schema (single mode only) the child reply must match. Reply is parsed+lightly validated; value lands on results[0].data, or results[0].structuredError describes the failure.',
+    }),
+  ),
   tasks: Type.Optional(
     Type.Array(TaskItem, { description: 'Array of {agent, task} for parallel execution' }),
   ),

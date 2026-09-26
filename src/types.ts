@@ -9,6 +9,8 @@ export interface SubagentParams {
   timeoutMs?: number;
   /** Retry attempts for a failed child run (single mode). 0–3, default 0. */
   retries?: number;
+  /** JSON Schema the child's reply must satisfy (single mode only, v1). */
+  outputSchema?: Record<string, unknown>;
   tasks?: Array<{
     agent: string;
     task: string;
@@ -60,6 +62,10 @@ export interface SingleResult {
   attempts?: number;
   /** Path to the full stdout artifact when output exceeded the 1MB in-memory cap. */
   outputFile?: string;
+  /** Parsed structured output when outputSchema was given and the reply parsed+validated. */
+  data?: unknown;
+  /** Set when structured extraction failed (parse or validation). Never silent: check this. */
+  structuredError?: string;
   errorMessage?: string;
   step?: number;
   /** True while this agent is still executing (progress snapshots); false once settled. */
