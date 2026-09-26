@@ -13,6 +13,12 @@ export interface AgentRunInput {
   thinkingLevelOverride?: ThinkingLevel;
   /** Per-dispatch timeout in ms; beats the runner-level runTimeoutMs. */
   timeoutMs?: number;
+  /** Opt-in: persist this run's session (runner generates the id). */
+  session?: boolean;
+  /** Continue this session id/path; wins over `session`. */
+  resume?: string;
+  /** Pre-computed session id (tests/dispatch injection). */
+  sessionId?: string;
   /** Pre-substituted text replacing {previous} for chain steps. */
   resolvedTask?: string;
 }

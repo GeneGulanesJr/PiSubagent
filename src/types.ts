@@ -11,6 +11,10 @@ export interface SubagentParams {
   retries?: number;
   /** JSON Schema the child's reply must satisfy (single mode only, v1). */
   outputSchema?: Record<string, unknown>;
+  /** Persist this run's session and report its id (single mode). */
+  session?: boolean;
+  /** Session id or path to continue (single mode). Wins over `session`. */
+  resume?: string;
   tasks?: Array<{
     agent: string;
     task: string;
@@ -18,6 +22,8 @@ export interface SubagentParams {
     thinkingLevel?: ThinkingLevel;
     timeoutMs?: number;
     retries?: number;
+    session?: boolean;
+    resume?: string;
   }>;
   chain?: Array<{
     agent: string;
@@ -26,6 +32,8 @@ export interface SubagentParams {
     thinkingLevel?: ThinkingLevel;
     timeoutMs?: number;
     retries?: number;
+    session?: boolean;
+    resume?: string;
   }>;
   agentScope?: 'user' | 'project' | 'both';
   confirmProjectAgents?: boolean;
@@ -66,6 +74,8 @@ export interface SingleResult {
   data?: unknown;
   /** Set when structured extraction failed (parse or validation). Never silent: check this. */
   structuredError?: string;
+  /** Child session id when the run was persisted (session/resume). */
+  sessionId?: string;
   errorMessage?: string;
   step?: number;
   /** True while this agent is still executing (progress snapshots); false once settled. */
@@ -93,6 +103,12 @@ export interface AgentRunInput {
   thinkingLevelOverride?: ThinkingLevel;
   /** Per-dispatch timeout in ms; beats the runner-level runTimeoutMs. */
   timeoutMs?: number;
+  /** Opt-in: persist this run's session (runner generates the id). */
+  session?: boolean;
+  /** Continue this session id/path; wins over `session`. */
+  resume?: string;
+  /** Pre-computed session id (tests/dispatch injection). */
+  sessionId?: string;
   /** Pre-substituted text replacing {previous} for chain steps. */
   resolvedTask?: string;
 }

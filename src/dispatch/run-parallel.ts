@@ -50,6 +50,8 @@ export async function runParallel(
             cwd: t.cwd ?? ctx.cwd,
             thinkingLevelOverride: t.thinkingLevel,
             timeoutMs: t.timeoutMs,
+            session: t.session,
+            resume: t.resume,
             ...parentDefaults(ctx),
           },
           ctx,

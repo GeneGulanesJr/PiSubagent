@@ -38,6 +38,8 @@ export async function runChain(
         resolvedTask,
         thinkingLevelOverride: step.thinkingLevel,
         timeoutMs: step.timeoutMs,
+        session: step.session,
+        resume: step.resume,
         ...parentDefaults(ctx),
       },
       ctx,

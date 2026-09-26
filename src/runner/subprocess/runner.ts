@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import * as fs from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import type { ThinkingLevel } from '@earendil-works/pi-agent-core';
@@ -57,7 +58,7 @@ export class SubprocessRunner implements AgentRunner {
 
   /**
    * Pure CLI-flag prefix composition. Order is stable for tests:
-   * --mode json -p --no-session [--model M] [--thinking T] [--tools list]
+   * --mode json -p [--session S | --session-id I | --no-session] [--model M] ...
    * (run() appends [--append-system-prompt tmp] and the Task: line afterwards.)
    *
    * Thinking level resolution (most specific wins): per-dispatch override →
@@ -69,7 +70,16 @@ export class SubprocessRunner implements AgentRunner {
     input: AgentRunInput,
     dispatchDefaults: { parentModel?: string; parentThinkingLevel?: ThinkingLevel },
   ): string[] {
-    const args: string[] = ['--mode', 'json', '-p', '--no-session'];
+    const args: string[] = ['--mode', 'json', '-p'];
+    if (input.resume) {
+      // Continue a prior session: takes precedence over --no-session and --session-id.
+      args.push('--session', input.resume);
+    } else if (input.sessionId) {
+      // Opt-in persistence: exact id, created by the child CLI if missing.
+      args.push('--session-id', input.sessionId);
+    } else {
+      args.push('--no-session');
+    }
     const model = input.agent.model ?? dispatchDefaults.parentModel;
     if (model) args.push('--model', model);
     const thinking = resolveThinkingLevel(input.agent, {
@@ -99,10 +109,14 @@ export class SubprocessRunner implements AgentRunner {
     signal?: AbortSignal,
     onUpdate?: (partial: SingleResult) => void,
   ): Promise<SingleResult> {
-    const args = this.buildArgs(input, {
-      parentModel: input.parentModel,
-      parentThinkingLevel: input.parentThinkingLevel,
-    });
+    const sessionId = input.resume ?? input.sessionId ?? (input.session ? randomUUID() : undefined);
+    const args = this.buildArgs(
+      { ...input, sessionId },
+      {
+        parentModel: input.parentModel,
+        parentThinkingLevel: input.parentThinkingLevel,
+      },
+    );
     const thinkingLevel = resolveThinkingLevel(input.agent, {
       thinkingLevelOverride: input.thinkingLevelOverride,
       parentThinkingLevel: input.parentThinkingLevel,
@@ -118,6 +132,7 @@ export class SubprocessRunner implements AgentRunner {
       usage: emptyUsage(),
       model: input.agent.model ?? input.parentModel,
       thinkingLevel,
+      sessionId,
     };
 
     let tmpPromptDir: string | null = null;

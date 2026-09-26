@@ -29,6 +29,8 @@ export async function runSingle(
       cwd: params.cwd ?? ctx.cwd,
       thinkingLevelOverride: params.thinkingLevel,
       timeoutMs: params.timeoutMs,
+      session: params.session,
+      resume: params.resume,
       ...parentDefaults(ctx),
     },
     ctx,

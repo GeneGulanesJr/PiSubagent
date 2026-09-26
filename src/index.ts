@@ -37,6 +37,10 @@ const TaskItem = Type.Object({
   thinkingLevel: Type.Optional(ThinkingLevelSchema),
   timeoutMs: TimeoutMsSchema,
   retries: RetriesSchema,
+  session: Type.Optional(
+    Type.Boolean({ description: 'Persist this run and report its session id.' }),
+  ),
+  resume: Type.Optional(Type.String({ description: 'Session id/path to continue.' })),
 });
 
 const ChainItem = Type.Object({
@@ -46,6 +50,10 @@ const ChainItem = Type.Object({
   thinkingLevel: Type.Optional(ThinkingLevelSchema),
   timeoutMs: TimeoutMsSchema,
   retries: RetriesSchema,
+  session: Type.Optional(
+    Type.Boolean({ description: 'Persist this run and report its session id.' }),
+  ),
+  resume: Type.Optional(Type.String({ description: 'Session id/path to continue.' })),
 });
 
 const AgentScopeSchema = Type.Union(
@@ -69,6 +77,18 @@ const SubagentParamsSchema = Type.Object({
     Type.Record(Type.String(), Type.Unknown(), {
       description:
         'JSON Schema (single mode only) the child reply must match. Reply is parsed+lightly validated; value lands on results[0].data, or results[0].structuredError describes the failure.',
+    }),
+  ),
+  session: Type.Optional(
+    Type.Boolean({
+      description:
+        'Persist this run as a pi session and report its id (SingleResult.sessionId) so later dispatches can resume it. Default: ephemeral.',
+    }),
+  ),
+  resume: Type.Optional(
+    Type.String({
+      description:
+        'Session id or path to continue from a prior run. Takes precedence over `session`.',
     }),
   ),
   tasks: Type.Optional(
