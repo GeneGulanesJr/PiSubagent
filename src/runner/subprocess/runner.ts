@@ -250,6 +250,12 @@ export class SubprocessRunner implements AgentRunner {
                 } catch {
                   /* ignore */
                 }
+                // The crossing chunk itself must not be lost either.
+                try {
+                  fs.appendFileSync(spillPath, text);
+                } catch {
+                  /* ignore */
+                }
                 appendStderr(`[truncated: stdout exceeded 1MB — full output: ${spillPath}]\n`);
               } else {
                 appendStderr(`[truncated: stdout exceeded 1MB]\n`);
