@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-09-27
+
+Polish patch closing the v0.2.0 review debt. One observable behavior change
+(timeout `stopReason`), two validation fixes, and a test seam. 270 tests
+across 26 files, all green.
+
+### Changed
+
+- **Timed-out runs now report `stopReason: "timeout"`** (was `"aborted"`).
+  `timedOut: true` and the `run timeout after Xms` error message are
+  unchanged — consumers keying on `timedOut` are unaffected; consumers keying
+  on `stopReason` can now distinguish timeouts from user aborts.
+
+### Fixed
+
+- `outputSchema` supplied alongside `tasks`/`chain` now returns an explicit
+  invalid-params error instead of being silently ignored.
+- `validateAgainstSchema` no longer masks `null` payloads to `{}`: with no
+  top-level `type`, a `null` reply validates as `data: null` instead of
+  producing a misleading "missing required property" error. `type: "object"`
+  schemas still reject `null` via the top-level type check.
+
+### Added
+
+- `SubprocessRunnerOptions.spillFactory` — injectable spill-file factory
+  (defaults to `createSpillFile`), making the plain-truncation fallback
+  branch reachable in tests.
+
+### Docs
+
+- README: `runTimeoutMs` clarified as a test-only constructor option (the
+  per-dispatch `timeoutMs` is the operative knob in production); the timeout
+  budget is per-attempt (worst-case `attempts × timeoutMs` with retries);
+  retrying a `session: true` run mints a fresh session per attempt.
+
 ## [0.2.0] - 2026-09-25
 
 Runtime-robustness minor: six per-dispatch controls over child subprocesses — timeout, retries, output spill, usage rollups, structured output, and session persistence/resume. 261 tests across 24 files, all green.
