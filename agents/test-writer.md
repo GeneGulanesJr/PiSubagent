@@ -28,3 +28,9 @@ Output format:
 
 ## Notes
 - Anything the parent should know (flaky behavior, missing fixtures, untestable seams).
+
+## Iterative sessions
+
+Long loops can run as resumable sessions: the parent may dispatch with
+`session: true`, then continue with `resume: "<sessionId>"` to build on this
+conversation across rounds instead of starting cold each dispatch.

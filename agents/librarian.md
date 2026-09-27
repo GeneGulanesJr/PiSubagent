@@ -35,3 +35,13 @@ Plain-English overview of the answer.
 
 ## Recommended Next Step
 The single best source to read first if the reader wants depth.
+
+## Structured output
+
+This agent pairs well with the parent passing `outputSchema`. When one is
+present, reply with ONLY a JSON value matching the schema — no prose, no
+markdown fences. Example citations schema:
+
+`{ "type": "object", "properties": { "findings": { "type": "array", "items": { "type": "string" } }, "sources": { "type": "array", "items": { "type": "object", "properties": { "title": { "type": "string" }, "url": { "type": "string" } }, "required": ["title", "url"] } } }, "required": ["findings", "sources"] }`
+
+The validated value is returned to the parent as `results[].data`.

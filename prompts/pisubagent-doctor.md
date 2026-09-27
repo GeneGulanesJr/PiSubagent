@@ -1,10 +1,10 @@
 ---
-description: Self-diagnostic — verify Node version, tests, agents, audit, settings, and a subagent smoke test
+description: Self-diagnostic — verify Node version, tests, agents, audit, settings, dispatch schema, and a subagent smoke test
 ---
 
 # /pisubagent-doctor
 
-When to use: Run this when PiSubagent feels broken, slow, or misconfigured — tests fail, agents don't appear, or the `subagent` tool errors. It runs six read-only checks and reports what to fix.
+When to use: Run this when PiSubagent feels broken, slow, or misconfigured — tests fail, agents don't appear, or the `subagent` tool errors. It runs seven read-only checks and reports what to fix.
 
 You are running diagnostics. **Do NOT modify any files.** Read-only inspection only. If a command fails, capture the error and keep going — the report stays informative even when individual checks fail.
 
@@ -20,6 +20,7 @@ You are running diagnostics. **Do NOT modify any files.** Read-only inspection o
 4. **Security audit** — Run `npm audit --json`. Sum vulnerabilities by severity (low / moderate / high / critical). Pass if `high + critical == 0`.
 5. **Settings registration** — Read `~/.pi/agent/settings.json`. Confirm `packages` array contains `"git:github.com/GeneGulanesJr/PiSubagent"`. If missing, show the user how to add it (`pi` adds it on first install; reinstall via `pi install git:github.com/GeneGulanesJr/PiSubagent`).
 6. **Subagent smoke test** — Call `subagent(agent: "scout", task: "echo doctor ok", agentScope: "user")`. Pass if it returns successfully (the literal string or a successful completion).
+7. **Dispatch schema surface** — Read `src/index.ts` in the repo root. Confirm the TypeBox definitions (`SubagentParamsSchema`, `TaskItem`, `ChainItem`) expose these fields: `timeoutMs`, `retries`, `retryBackoffMs`, `retryOn`, `outputSchema`, `session`, `resume`, `sessionDir`. Then verify the validation dependency imports: run `node -e "import('ajv').then(() => console.log('ajv ok')).catch(() => process.exit(1))"` from the repo root — pass if it prints `ajv ok`. Fail if any field is missing or the import fails.
 
 ## Output format
 

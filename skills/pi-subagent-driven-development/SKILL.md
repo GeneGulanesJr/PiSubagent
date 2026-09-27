@@ -94,6 +94,21 @@ Use the least powerful model that can handle the role. Agent frontmatter `model:
 | reviewer | Sonnet | review judgment |
 | worker | Sonnet | implementation quality |
 
+## Long-Running Tasks
+
+Dispatch-time runtime knobs (v0.3.0+):
+
+- Tasks that may hang: pass `timeoutMs` (per-attempt wall-clock budget, min
+  1000) and `retries` (0–3). Add `retryBackoffMs` for exponential spacing and
+  `retryOn: ["timeout"]` to retry only timeouts, not hard failures.
+- Machine-checkable deliverables: pass `outputSchema` per dispatch or per
+  `tasks[]`/`chain[]` item — the validated JSON lands on `results[].data`
+  (e.g. planner steps as a structured array). Failures surface explicitly on
+  `results[].structuredError` without failing the dispatch.
+- Runs needing isolated session storage: pass `sessionDir`. Iterative agents
+  (debugger, test-writer) can be dispatched with `session: true` and resumed
+  with `resume: "<sessionId>"`.
+
 ## Direct Mode (PiSubagent unavailable)
 
 For executing a written plan task-by-task in this session, with the same quality discipline:

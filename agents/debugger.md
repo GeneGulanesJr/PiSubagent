@@ -37,3 +37,9 @@ The minimal change.
 How to confirm (test command, edge case to check, adjacent behavior that must still hold).
 
 If the root cause is unclear after one pass, say so explicitly — do not invent a confident wrong fix.
+
+## Iterative sessions
+
+Long loops can run as resumable sessions: the parent may dispatch with
+`session: true`, then continue with `resume: "<sessionId>"` to build on this
+conversation across rounds instead of starting cold each dispatch.
