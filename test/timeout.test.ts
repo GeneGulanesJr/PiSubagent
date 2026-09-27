@@ -9,7 +9,13 @@ import { isFailedResult } from '../src/output.js';
 import type { AgentRunner, AgentRunInput } from '../src/runner/runner.js';
 import type { AgentConfig, SingleResult } from '../src/types.js';
 
-const baseAgent = { name: 'scout', description: '', systemPrompt: '', source: 'bundled' as const, filePath: '' };
+const baseAgent = {
+  name: 'scout',
+  description: '',
+  systemPrompt: '',
+  source: 'bundled' as const,
+  filePath: '',
+};
 const baseInput = { agent: baseAgent, task: 'do work', cwd: '/tmp' };
 
 // FakeProc — EventEmitter satisfying the ChildProcess surface the runner uses.
@@ -26,18 +32,28 @@ function makeFakeProc(opts: { killFiresClose?: boolean } = {}) {
     return true;
   }) as unknown as typeof proc.kill);
   return {
-    proc, stdout, stderr,
-    get killed() { return state.killed; },
-    get exitCode() { return state.exitCode; },
+    proc,
+    stdout,
+    stderr,
+    get killed() {
+      return state.killed;
+    },
+    get exitCode() {
+      return state.exitCode;
+    },
     finish(code: number | null = 0) {
-      stdout.push(null); stderr.push(null);
+      stdout.push(null);
+      stderr.push(null);
       state.exitCode = code;
       proc.emit('close', code);
     },
   };
 }
 
-async function waitForCloseListener(proc: ReturnType<typeof makeFakeProc>, maxTicks = 200): Promise<void> {
+async function waitForCloseListener(
+  proc: ReturnType<typeof makeFakeProc>,
+  maxTicks = 200,
+): Promise<void> {
   for (let i = 0; i < maxTicks; i++) {
     if (proc.proc.listenerCount('close') >= 1) return;
     await new Promise((resolve) => setImmediate(resolve));
@@ -55,7 +71,7 @@ describe('SubprocessRunner.run — per-dispatch timeout', () => {
     fake.finish(143);
     const result = await promise;
     expect(result.timedOut).toBe(true);
-    expect(result.stopReason).toBe('aborted');
+    expect(result.stopReason).toBe('timeout');
     expect(result.errorMessage).toContain('run timeout after 50ms');
   });
 
@@ -77,7 +93,10 @@ describe('SubprocessRunner.run — per-dispatch timeout', () => {
 
   it('clean exit clears the timer (no kill, not aborted)', async () => {
     const fake = makeFakeProc();
-    const runner = new SubprocessRunner({ spawnFn: (() => fake.proc) as never, runTimeoutMs: 10_000 });
+    const runner = new SubprocessRunner({
+      spawnFn: (() => fake.proc) as never,
+      runTimeoutMs: 10_000,
+    });
     const promise = runner.run({ ...baseInput });
     await waitForCloseListener(fake);
     fake.finish(0);
@@ -96,13 +115,21 @@ describe('isFailedResult — timedOut', () => {
     exitCode: 0,
     messages: [],
     stderr: '',
-    usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 1 },
+    usage: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      cost: 0,
+      contextTokens: 0,
+      turns: 1,
+    },
   };
 
   it('returns true for a timed-out result', () => {
-    // The runner marks a timeout as timedOut + stopReason 'aborted'; isFailedResult
-    // classifies it as failed via the aborted stopReason.
-    const result = { ...base, timedOut: true, stopReason: 'aborted' } as unknown as SingleResult;
+    // The runner marks a timeout as timedOut + stopReason 'timeout'; isFailedResult
+    // classifies it as failed via the timedOut flag.
+    const result = { ...base, timedOut: true, stopReason: 'timeout' } as unknown as SingleResult;
     expect(isFailedResult(result)).toBe(true);
   });
 
@@ -113,8 +140,15 @@ describe('isFailedResult — timedOut', () => {
 });
 
 describe('dispatch pass-through — timeoutMs', () => {
-  const agents = [{ name: 'a', description: '', systemPrompt: '', source: 'bundled', filePath: '' }] as AgentConfig[];
-  const ctx = { cwd: '/tmp', hasUI: false, isProjectTrusted: () => true, ui: { confirm: async () => true } } as never;
+  const agents = [
+    { name: 'a', description: '', systemPrompt: '', source: 'bundled', filePath: '' },
+  ] as AgentConfig[];
+  const ctx = {
+    cwd: '/tmp',
+    hasUI: false,
+    isProjectTrusted: () => true,
+    ui: { confirm: async () => true },
+  } as never;
 
   function recordingRunner(seen: Array<Partial<AgentRunInput>>): AgentRunner {
     return {
@@ -126,9 +160,19 @@ describe('dispatch pass-through — timeoutMs', () => {
           agentSource: 'user',
           task: input.task,
           exitCode: 0,
-          messages: [{ role: 'assistant', content: [{ type: 'text', text: 'ok' }] }] as unknown as Message[],
+          messages: [
+            { role: 'assistant', content: [{ type: 'text', text: 'ok' }] },
+          ] as unknown as Message[],
           stderr: '',
-          usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 1 },
+          usage: {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            cost: 0,
+            contextTokens: 0,
+            turns: 1,
+          },
         };
       },
     };
@@ -142,13 +186,23 @@ describe('dispatch pass-through — timeoutMs', () => {
 
   it('forwards tasks[].timeoutMs into AgentRunInput', async () => {
     const seen: Array<Partial<AgentRunInput>> = [];
-    await execute({ tasks: [{ agent: 'a', task: 't', timeoutMs: 2222 }] }, ctx, agents, recordingRunner(seen));
+    await execute(
+      { tasks: [{ agent: 'a', task: 't', timeoutMs: 2222 }] },
+      ctx,
+      agents,
+      recordingRunner(seen),
+    );
     expect(seen[0]?.timeoutMs).toBe(2222);
   });
 
   it('forwards chain[].timeoutMs into AgentRunInput', async () => {
     const seen: Array<Partial<AgentRunInput>> = [];
-    await execute({ chain: [{ agent: 'a', task: 't', timeoutMs: 3333 }] }, ctx, agents, recordingRunner(seen));
+    await execute(
+      { chain: [{ agent: 'a', task: 't', timeoutMs: 3333 }] },
+      ctx,
+      agents,
+      recordingRunner(seen),
+    );
     expect(seen[0]?.timeoutMs).toBe(3333);
   });
 });

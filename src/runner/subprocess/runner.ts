@@ -40,7 +40,7 @@ export interface SubprocessRunnerOptions {
   /**
    * Optional hard timeout in milliseconds. If the subprocess hasn't
    * exited within this window, SIGTERM is sent (escalating to SIGKILL
-   * after 5s) and the run is finalized with `stopReason: "aborted"` and
+   * after 5s) and the run is finalized with `stopReason: "timeout"` and
    * `errorMessage: "run timeout after Xms"`. Default: no timeout.
    */
   runTimeoutMs?: number;
@@ -316,8 +316,9 @@ export class SubprocessRunner implements AgentRunner {
         }
 
         // Per-dispatch timeout beats the runner-level default. On expiry:
-        // SIGTERM now, SIGKILL after 5s grace (unref'd), and the result is
-        // marked timedOut so callers can distinguish timeout from user abort.
+        // SIGTERM now, SIGKILL after 5s grace (unref'd), and the result gets
+        // `stopReason: 'timeout'` plus `timedOut: true` (user aborts keep
+        // `stopReason: 'aborted'` and no timedOut).
         const requested = input.timeoutMs ?? this.runTimeoutMs;
         // Defensive floor: a non-positive timeout must not silently disable
         // the kill switch (the schema enforces min 1000, but direct callers
@@ -332,7 +333,7 @@ export class SubprocessRunner implements AgentRunner {
               if (proc.exitCode === null && !proc.killed) proc.kill('SIGKILL');
             }, 5000);
             sigkill.unref();
-            result.stopReason = 'aborted';
+            result.stopReason = 'timeout';
             result.errorMessage = `run timeout after ${effectiveTimeoutMs}ms`;
           }, effectiveTimeoutMs);
           timeoutHandle.unref();

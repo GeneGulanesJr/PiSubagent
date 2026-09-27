@@ -32,6 +32,19 @@ export async function execute(
   const mode = detectMode(params);
   if (mode === 'invalid') return buildInvalidParamsError(agents);
 
+  if (mode !== 'single' && params.outputSchema) {
+    return {
+      content: [
+        {
+          type: 'text',
+          text: 'Invalid parameters. outputSchema is single-mode only; remove it from tasks/chain dispatches.',
+        },
+      ],
+      details: { ...baseDetails(mode, params, null), results: [] },
+      isError: true,
+    };
+  }
+
   const decision = await confirmProjectAgentsIfNeeded(params, agents, ctx);
   if (!decision.continue) {
     // Use the detected mode so `details.mode` reflects what the user invoked,

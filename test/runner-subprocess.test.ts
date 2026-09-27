@@ -371,7 +371,7 @@ describe('SubprocessRunner.run hardening', () => {
     expect(result.messages).toHaveLength(2);
   });
 
-  it('kills the subprocess and reports aborted when runTimeoutMs elapses', async () => {
+  it('kills the subprocess and reports timeout when runTimeoutMs elapses', async () => {
     vi.useFakeTimers();
     try {
       const proc = makeFakeProc({ killFiresClose: true });
@@ -388,7 +388,7 @@ describe('SubprocessRunner.run hardening', () => {
       await vi.runAllTimersAsync();
 
       const result = await promise;
-      expect(result.stopReason).toBe('aborted');
+      expect(result.stopReason).toBe('timeout');
       expect(result.errorMessage).toMatch(/run timeout/);
       expect(proc.kill).toHaveBeenCalledWith('SIGTERM');
     } finally {

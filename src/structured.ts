@@ -66,13 +66,16 @@ export function validateAgainstSchema(
   if (typeof schema.type === 'string' && !matchesType(value, schema.type)) {
     return `type mismatch: expected ${schema.type}`;
   }
-  if (schema.type === 'object' || typeof value === 'object') {
+  const objectish =
+    schema.type === 'object' ||
+    (typeof value === 'object' && value !== null && !Array.isArray(value));
+  if (objectish) {
     const required = Array.isArray(schema.required) ? schema.required : [];
     const props =
       typeof schema.properties === 'object' && schema.properties !== null
         ? (schema.properties as Record<string, Record<string, unknown>>)
         : {};
-    const obj = (value ?? {}) as Record<string, unknown>;
+    const obj = value as Record<string, unknown>;
     for (const key of required) {
       // Object.hasOwn: `key in obj` would match Object.prototype props
       // ('toString', 'constructor'), letting required keys pass vacuously.
