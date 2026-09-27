@@ -161,6 +161,7 @@ export function isFailedResult(result: SingleResult): boolean {
     result.exitCode !== 0 ||
     result.stopReason === 'error' ||
     result.stopReason === 'aborted' ||
+    result.stopReason === 'timeout' ||
     result.timedOut === true
   );
 }

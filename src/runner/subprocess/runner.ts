@@ -325,8 +325,9 @@ export class SubprocessRunner implements AgentRunner {
 
         // Per-dispatch timeout beats the runner-level default. On expiry:
         // SIGTERM now, SIGKILL after 5s grace (unref'd), and the result gets
-        // `stopReason: 'timeout'` plus `timedOut: true` (user aborts keep
-        // `stopReason: 'aborted'` and no timedOut).
+        // `stopReason: 'timeout'` plus `timedOut: true` — unless the user
+        // also aborts, in which case `wasAborted` wins the stopReason (user
+        // intent) while `timedOut` stays set for the record.
         const requested = input.timeoutMs ?? this.runTimeoutMs;
         // Defensive floor: a non-positive timeout must not silently disable
         // the kill switch (the schema enforces min 1000, but direct callers

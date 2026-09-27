@@ -5,6 +5,7 @@ import type { ChildProcess } from 'node:child_process';
 import type { Message } from '@earendil-works/pi-ai';
 import { SubprocessRunner } from '../src/runner/subprocess.js';
 import { execute } from '../src/dispatch.js';
+import { isFailedResult } from '../src/output.js';
 import type { DispatchContext } from '../src/dispatch.js';
 import { extractStructured } from '../src/structured.js';
 import type { AgentRunner, AgentRunInput } from '../src/runner/runner.js';
@@ -131,5 +132,29 @@ describe('v0.2.1 fixes', () => {
     );
     expect(out.isError).toBe(false);
     expect(out.details.results[0].data).toBe('ok');
+  });
+
+  it('isFailedResult classifies stopReason timeout without timedOut', () => {
+    // Defense-in-depth: a future runner setting 'timeout' alone must not
+    // classify as success just because the timedOut flag is absent.
+    const result = {
+      agent: 'a',
+      agentSource: 'user',
+      task: 't',
+      exitCode: 0,
+      messages: [],
+      stderr: '',
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        cost: 0,
+        contextTokens: 0,
+        turns: 1,
+      },
+      stopReason: 'timeout',
+    } as unknown as SingleResult;
+    expect(isFailedResult(result)).toBe(true);
   });
 });

@@ -45,7 +45,9 @@ Any dispatch (or item) also accepts runtime knobs:
 - `outputSchema` — JSON Schema contract, single mode only (supplying it on
   `tasks`/`chain` is a parameter error). The child is instructed
   to reply with pure JSON; the parsed value lands on `data`, and any
-  parse/validation failure lands explicitly on `structuredError`.
+  parse/validation failure lands explicitly on `structuredError`. Declare a
+  top-level `type` in your schema — without one, a `null` reply validates as
+  `data: null`.
 - `session: true` — persist the run as a pi session and report its
   `sessionId`; `resume: "<id|path>"` continues a prior session. Default runs
   are ephemeral (`--no-session`).
