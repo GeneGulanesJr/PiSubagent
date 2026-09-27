@@ -176,3 +176,22 @@ describe('dispatch wiring — outputSchema', () => {
     expect('structuredError' in r).toBe(false);
   });
 });
+
+describe('malformed outputSchema degrades gracefully', () => {
+  it('invalid keyword value yields structuredError, not a thrown crash', async () => {
+    const out = await execute(
+      { agent: 'a', task: 't', outputSchema: { type: 'strin' } },
+      ctx,
+      [agent],
+      textRunner('"ok"'),
+    );
+    expect(out.isError).toBe(false);
+    expect(out.details.results[0].structuredError).toContain('invalid schema:');
+    expect(out.details.results[0].data).toBeUndefined();
+  });
+
+  it('wrong required shape yields structuredError, not a thrown crash', () => {
+    const violation = validateAgainstSchema({}, { required: 'name' } as never);
+    expect(violation).toContain('invalid schema:');
+  });
+});

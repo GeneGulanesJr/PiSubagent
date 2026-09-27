@@ -115,9 +115,9 @@ export interface RetryOptions {
  * (ctx.signal already aborted) is never retried. The returned result
  * carries `attempts` when more than one attempt was made.
  *
- * `opts.backoffMs` adds an exponential delay before each retry: attempt n
- * waits backoffMs × 2^(n-2) (first retry waits the base, then 2×, 4×, …),
- * capped at 30s. `opts.retryOn` restricts which failure classes retry —
+ * `opts.backoffMs` adds an exponential delay before each retry: retry index
+ * i (1st, 2nd, 3rd retry) waits backoffMs × 2^(i-1) — base, 2×, 4× — capped
+ * at 30s. `opts.retryOn` restricts which failure classes retry —
  * a timed-out result classifies as 'timeout', every other failure as
  * 'error'; aborts are never retried regardless of the filter.
  */

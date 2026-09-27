@@ -45,14 +45,23 @@ function stripFences(text: string): string {
  * `<instancePath> <message>` (empty instancePath → just the message),
  * or null when the value passes. `ownProperties` keeps prototype-chain
  * keys (e.g. 'toString') from satisfying `required` — Object.hasOwn
- * semantics.
+ * semantics. Malformed schemas (invalid keyword values, wrong shapes)
+ * degrade to a schema-error string — never a thrown exception, so a bad
+ * `outputSchema` cannot crash a dispatch after the child already ran.
+ * `strict: 'log'` warns on unknown keywords (typo protection) without
+ * rejecting schemas that use dialect extensions.
  */
 export function validateAgainstSchema(
   value: unknown,
   schema: Record<string, unknown>,
 ): string | null {
-  const ajv = new Ajv({ strict: false, allErrors: false, ownProperties: true });
-  const validate = ajv.compile(schema);
+  const ajv = new Ajv({ strict: 'log', allErrors: false, ownProperties: true });
+  let validate: Ajv.ValidateFunction;
+  try {
+    validate = ajv.compile(schema);
+  } catch (err) {
+    return `invalid schema: ${err instanceof Error ? err.message : String(err)}`;
+  }
   if (validate(value)) return null;
   const err = validate.errors?.[0];
   if (!err?.message) return 'validation failed';

@@ -37,7 +37,8 @@ Any dispatch (or item) also accepts runtime knobs:
   is killed (SIGTERM → SIGKILL after 5s) and the result is marked `timedOut`
   with `stopReason: "timeout"` (user aborts report `"aborted"`). The budget
   applies per attempt — with `retries`, worst-case wall clock is
-  `attempts × timeoutMs`.
+  `attempts × timeoutMs` plus any backoff delays (up to 7× `retryBackoffMs`,
+  capped at 30s each).
 - `retries` (0–3, default 0) — failed runs are retried; user aborts never are.
   `attempts` on the result reports the total when >1. Retrying a
   `session: true` run mints a fresh session per attempt; failed attempts'
