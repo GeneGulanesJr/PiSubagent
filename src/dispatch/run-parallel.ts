@@ -53,6 +53,7 @@ export async function runParallel(
             timeoutMs: t.timeoutMs,
             session: t.session,
             resume: t.resume,
+            sessionDir: t.sessionDir,
             ...parentDefaults(ctx),
           },
           ctx,

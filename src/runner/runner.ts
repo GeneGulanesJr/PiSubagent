@@ -17,6 +17,8 @@ export interface AgentRunInput {
   session?: boolean;
   /** Continue this session id/path; wins over `session`. */
   resume?: string;
+  /** Session storage directory override (child --session-dir flag). */
+  sessionDir?: string;
   /** Pre-computed session id (tests/dispatch injection). */
   sessionId?: string;
   /** Pre-substituted text replacing {previous} for chain steps. */

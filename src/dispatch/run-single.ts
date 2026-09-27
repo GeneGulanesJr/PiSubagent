@@ -29,6 +29,7 @@ export async function runSingle(
       timeoutMs: params.timeoutMs,
       session: params.session,
       resume: params.resume,
+      sessionDir: params.sessionDir,
       ...parentDefaults(ctx),
     },
     ctx,

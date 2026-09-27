@@ -213,6 +213,96 @@ describe('renderResult', () => {
   });
 });
 
+describe('result badges', () => {
+  it('single: shows retry attempts badge when attempts > 1', () => {
+    const r = renderResult(
+      {
+        content: [{ type: 'text', text: 'x' }],
+        details: details('single', [makeResult({ attempts: 3 })]),
+      },
+      { expanded: false },
+      theme as never,
+    );
+    expect(r).toContain('[×3]');
+  });
+
+  it('single: shows timed out badge when timedOut', () => {
+    const r = renderResult(
+      {
+        content: [{ type: 'text', text: 'x' }],
+        details: details('single', [makeResult({ timedOut: true })]),
+      },
+      { expanded: false },
+      theme as never,
+    );
+    expect(r).toContain('[timed out]');
+  });
+
+  it('single: structured ✓ when data present; ✗ when structuredError set (and not ✓)', () => {
+    const ok = renderResult(
+      {
+        content: [{ type: 'text', text: 'x' }],
+        details: details('single', [makeResult({ data: { ok: true } })]),
+      },
+      { expanded: false },
+      theme as never,
+    );
+    expect(ok).toContain('[structured ✓]');
+
+    const bad = renderResult(
+      {
+        content: [{ type: 'text', text: 'x' }],
+        details: details('single', [makeResult({ structuredError: 'schema mismatch' })]),
+      },
+      { expanded: false },
+      theme as never,
+    );
+    expect(bad).toContain('[structured ✗]');
+    expect(bad).not.toContain('[structured ✓]');
+  });
+
+  it('single: shows truncated session id badge', () => {
+    const r = renderResult(
+      {
+        content: [{ type: 'text', text: 'x' }],
+        details: details('single', [
+          makeResult({ sessionId: '12345678-abcd-ef01-2345-6789abcdef01' }),
+        ]),
+      },
+      { expanded: false },
+      theme as never,
+    );
+    expect(r).toContain('(session 12345678)');
+  });
+
+  it('single: shows spilled output file pointer', () => {
+    const r = renderResult(
+      {
+        content: [{ type: 'text', text: 'x' }],
+        details: details('single', [makeResult({ outputFile: '/tmp/x.log' })]),
+      },
+      { expanded: false },
+      theme as never,
+    );
+    expect(r).toContain('→ spilled: /tmp/x.log');
+  });
+
+  it('multi mode: per-result badges render in the loop', () => {
+    const r = renderResult(
+      {
+        content: [{ type: 'text', text: 'batch' }],
+        details: details('parallel', [
+          makeResult({ agent: 'a', attempts: 2 }),
+          makeResult({ agent: 'b' }),
+        ]),
+      },
+      { expanded: false },
+      theme as never,
+    );
+    expect(r).toContain('[×2]');
+  });
+});
+
 describe('render snapshots', () => {
   it('renderCall: single mode snapshot', () => {
     const t = renderCall({ agent: 'scout', task: 'find auth code' }, theme as never);

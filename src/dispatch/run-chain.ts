@@ -44,6 +44,7 @@ export async function runChain(
         timeoutMs: step.timeoutMs,
         session: step.session,
         resume: step.resume,
+        sessionDir: step.sessionDir,
         ...parentDefaults(ctx),
       },
       ctx,

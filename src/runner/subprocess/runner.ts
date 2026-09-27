@@ -88,6 +88,7 @@ export class SubprocessRunner implements AgentRunner {
     } else {
       args.push('--no-session');
     }
+    if (input.sessionDir) args.push('--session-dir', input.sessionDir);
     const model = input.agent.model ?? dispatchDefaults.parentModel;
     if (model) args.push('--model', model);
     const thinking = resolveThinkingLevel(input.agent, {

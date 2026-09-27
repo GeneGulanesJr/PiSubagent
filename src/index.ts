@@ -59,6 +59,7 @@ const TaskItem = Type.Object({
   retries: RetriesSchema,
   retryBackoffMs: RetryBackoffMsSchema,
   retryOn: RetryOnSchema,
+  sessionDir: Type.Optional(Type.String({ description: 'Session storage directory override.' })),
   outputSchema: Type.Optional(
     Type.Record(Type.String(), Type.Unknown(), {
       description:
@@ -80,6 +81,7 @@ const ChainItem = Type.Object({
   retries: RetriesSchema,
   retryBackoffMs: RetryBackoffMsSchema,
   retryOn: RetryOnSchema,
+  sessionDir: Type.Optional(Type.String({ description: 'Session storage directory override.' })),
   outputSchema: Type.Optional(
     Type.Record(Type.String(), Type.Unknown(), {
       description:
@@ -111,6 +113,11 @@ const SubagentParamsSchema = Type.Object({
   retries: RetriesSchema,
   retryBackoffMs: RetryBackoffMsSchema,
   retryOn: RetryOnSchema,
+  sessionDir: Type.Optional(
+    Type.String({
+      description: 'Session storage directory override (child --session-dir flag).',
+    }),
+  ),
   outputSchema: Type.Optional(
     Type.Record(Type.String(), Type.Unknown(), {
       description:

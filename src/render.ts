@@ -81,6 +81,17 @@ export function renderResult(
 
 const RUNNING_ICON = '◐';
 
+/** Compact per-result badges: attempts, timeout, structured outcome, session. */
+function renderBadges(r: SingleResult, theme: TuiTheme): string {
+  let badges = '';
+  if (r.attempts && r.attempts > 1) badges += theme.fg('muted', ` [×${r.attempts}]`);
+  if (r.timedOut) badges += theme.fg('error', ' [timed out]');
+  if (r.structuredError) badges += theme.fg('error', ' [structured ✗]');
+  else if (r.data !== undefined) badges += theme.fg('success', ' [structured ✓]');
+  if (r.sessionId) badges += theme.fg('muted', ` (session ${r.sessionId.slice(0, 8)})`);
+  return badges;
+}
+
 function renderSingleResult(r: SingleResult, expanded: boolean, theme: TuiTheme): string {
   const failed = isFailedResult(r);
   const icon = r.running
@@ -90,6 +101,7 @@ function renderSingleResult(r: SingleResult, expanded: boolean, theme: TuiTheme)
       : theme.fg('success', '✓');
 
   let text = `${icon} ${theme.fg('toolTitle', theme.bold(r.agent))}${theme.fg('muted', ` (${r.agentSource})`)}`;
+  text += renderBadges(r, theme);
   if (r.running) text += theme.fg('muted', ' running…');
   if (failed && r.stopReason) text += ` ${theme.fg('error', `[${r.stopReason}]`)}`;
   if (failed && r.errorMessage) text += `\n${theme.fg('error', `Error: ${r.errorMessage}`)}`;
@@ -112,6 +124,7 @@ function renderSingleResult(r: SingleResult, expanded: boolean, theme: TuiTheme)
 
   const usageStr = formatUsageStats(r.usage, r.model);
   if (usageStr) text += `\n${theme.fg('dim', usageStr)}`;
+  if (r.outputFile) text += `\n${theme.fg('dim', `→ spilled: ${r.outputFile}`)}`;
 
   if (expanded) {
     const finalOutput = getFinalOutput(r.messages);
@@ -153,7 +166,7 @@ function renderMultiResult(
       : r.exitCode === 0
         ? ' done'
         : ` failed${r.stopReason ? ` [${r.stopReason}]` : ''}`;
-    text += `\n  ${rIcon} ${theme.fg('accent', r.agent)}${theme.fg('muted', statusSuffix)}`;
+    text += `\n  ${rIcon} ${theme.fg('accent', r.agent)}${theme.fg('muted', statusSuffix)}${renderBadges(r, theme)}`;
   }
   return text;
 }

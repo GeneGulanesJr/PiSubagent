@@ -13,6 +13,8 @@ export interface SubagentParams {
   retryBackoffMs?: number;
   /** Failure classes eligible for retry; default: any failed result. */
   retryOn?: Array<'error' | 'timeout'>;
+  /** Session storage directory override (passed to the child pi as --session-dir). */
+  sessionDir?: string;
   /** JSON Schema the child's reply must satisfy (single mode only, v1). */
   outputSchema?: Record<string, unknown>;
   /** Persist this run's session and report its id (single mode). */
@@ -28,6 +30,7 @@ export interface SubagentParams {
     retries?: number;
     retryBackoffMs?: number;
     retryOn?: Array<'error' | 'timeout'>;
+    sessionDir?: string;
     outputSchema?: Record<string, unknown>;
     session?: boolean;
     resume?: string;
@@ -41,6 +44,7 @@ export interface SubagentParams {
     retries?: number;
     retryBackoffMs?: number;
     retryOn?: Array<'error' | 'timeout'>;
+    sessionDir?: string;
     outputSchema?: Record<string, unknown>;
     session?: boolean;
     resume?: string;
@@ -117,6 +121,7 @@ export interface AgentRunInput {
   session?: boolean;
   /** Continue this session id/path; wins over `session`. */
   resume?: string;
+  sessionDir?: string;
   /** Pre-computed session id (tests/dispatch injection). */
   sessionId?: string;
   /** Pre-substituted text replacing {previous} for chain steps. */
