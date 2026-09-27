@@ -30,6 +30,26 @@ const RetriesSchema = Type.Optional(
   Type.Number({ minimum: 0, maximum: 3, description: RETRIES_DESCRIPTION }),
 );
 
+const RETRY_BACKOFF_DESCRIPTION =
+  'Base delay in ms before retry attempts (exponential: base, 2×, 4×; capped at 30s). 0 = immediate retry.';
+
+const RetryBackoffMsSchema = Type.Optional(
+  Type.Number({ minimum: 0, maximum: 60000, description: RETRY_BACKOFF_DESCRIPTION }),
+);
+
+const RetryOnSchema = Type.Optional(
+  Type.Array(
+    Type.Union([Type.Literal('error'), Type.Literal('timeout')], {
+      description: "Failure class to retry: 'error' (non-zero exit / failed run) or 'timeout'.",
+    }),
+    {
+      maxItems: 2,
+      description:
+        'Failure classes eligible for retry. Default: any failed result. Aborts are never retried.',
+    },
+  ),
+);
+
 const TaskItem = Type.Object({
   agent: Type.String({ description: 'Name of the agent to invoke' }),
   task: Type.String({ description: 'Task to delegate to the agent' }),
@@ -37,6 +57,8 @@ const TaskItem = Type.Object({
   thinkingLevel: Type.Optional(ThinkingLevelSchema),
   timeoutMs: TimeoutMsSchema,
   retries: RetriesSchema,
+  retryBackoffMs: RetryBackoffMsSchema,
+  retryOn: RetryOnSchema,
   outputSchema: Type.Optional(
     Type.Record(Type.String(), Type.Unknown(), {
       description:
@@ -56,6 +78,8 @@ const ChainItem = Type.Object({
   thinkingLevel: Type.Optional(ThinkingLevelSchema),
   timeoutMs: TimeoutMsSchema,
   retries: RetriesSchema,
+  retryBackoffMs: RetryBackoffMsSchema,
+  retryOn: RetryOnSchema,
   outputSchema: Type.Optional(
     Type.Record(Type.String(), Type.Unknown(), {
       description:
@@ -85,6 +109,8 @@ const SubagentParamsSchema = Type.Object({
   thinkingLevel: Type.Optional(ThinkingLevelSchema),
   timeoutMs: TimeoutMsSchema,
   retries: RetriesSchema,
+  retryBackoffMs: RetryBackoffMsSchema,
+  retryOn: RetryOnSchema,
   outputSchema: Type.Optional(
     Type.Record(Type.String(), Type.Unknown(), {
       description:

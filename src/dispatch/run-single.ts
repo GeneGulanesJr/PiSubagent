@@ -37,6 +37,7 @@ export async function runSingle(
       results[0] = { ...partial, running: true };
       emit?.(snapshot('single', base, results, 1));
     },
+    { backoffMs: params.retryBackoffMs, retryOn: params.retryOn },
   );
   const settled = params.outputSchema
     ? { ...applyStructured(result, params.outputSchema), task: params.task! }

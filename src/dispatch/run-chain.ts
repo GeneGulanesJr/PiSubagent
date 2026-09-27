@@ -52,6 +52,7 @@ export async function runChain(
         results[i] = { ...partial, running: true };
         emit?.(snapshot('chain', base, results, steps.length));
       },
+      { backoffMs: step.retryBackoffMs, retryOn: step.retryOn },
     );
     const settled = step.outputSchema
       ? { ...applyStructured(result, step.outputSchema), task: step.task }

@@ -101,11 +101,25 @@ export { baseDetails, parentDefaults, stubResult };
 /** Hard cap on retries regardless of what the schema/caller passes. */
 const MAX_RETRIES = 3;
 
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+export interface RetryOptions {
+  /** Base backoff delay in ms; exponential with 30s cap. 0/undefined = immediate. */
+  backoffMs?: number;
+  /** Failure classes eligible for retry; undefined = any failed result. */
+  retryOn?: Array<'error' | 'timeout'>;
+}
+
 /**
  * Run once, retrying failed results up to `retries` times. A user abort
  * (ctx.signal already aborted) is never retried. The returned result
- * carries `attempts` when more than one attempt was made. No backoff
- * delay in v1 — retries are immediate.
+ * carries `attempts` when more than one attempt was made.
+ *
+ * `opts.backoffMs` adds an exponential delay before each retry: attempt n
+ * waits backoffMs × 2^(n-2) (first retry waits the base, then 2×, 4×, …),
+ * capped at 30s. `opts.retryOn` restricts which failure classes retry —
+ * a timed-out result classifies as 'timeout', every other failure as
+ * 'error'; aborts are never retried regardless of the filter.
  */
 export async function runWithRetries(
   runner: AgentRunner,
@@ -113,6 +127,7 @@ export async function runWithRetries(
   ctx: DispatchContext,
   retries: number | undefined,
   onPartial?: (partial: SingleResult) => void,
+  opts?: RetryOptions,
 ): Promise<SingleResult> {
   const maxAttempts = 1 + Math.max(0, Math.min(retries ?? 0, MAX_RETRIES));
   let result = await runner.run(input, ctx.signal, onPartial);
@@ -121,6 +136,19 @@ export async function runWithRetries(
   // would under-report true cost exactly when retries fire.
   const usage: UsageStats = { ...result.usage };
   while (isFailedResult(result) && attempt < maxAttempts && !ctx.signal?.aborted) {
+    // Failure-class filter: when retryOn is set, only listed classes retry.
+    // A timed-out result classifies as 'timeout' (timedOut flag or stopReason);
+    // every other failure classifies as 'error'. Aborts never reach here.
+    if (opts?.retryOn) {
+      const failureClass =
+        result.timedOut === true || result.stopReason === 'timeout' ? 'timeout' : 'error';
+      if (!opts.retryOn.includes(failureClass)) break;
+    }
+    if (opts?.backoffMs && opts.backoffMs > 0) {
+      const delay = Math.min(opts.backoffMs * 2 ** (attempt - 1), 30_000);
+      await sleep(delay);
+      if (ctx.signal?.aborted) break;
+    }
     attempt += 1;
     result = await runner.run(input, ctx.signal, onPartial);
     usage.input += result.usage.input;

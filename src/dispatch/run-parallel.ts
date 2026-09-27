@@ -61,6 +61,7 @@ export async function runParallel(
             results[i] = { ...partial, running: true };
             emit?.(snapshot('parallel', base, results, tasks.length));
           },
+          { backoffMs: t.retryBackoffMs, retryOn: t.retryOn },
         ).then((final) => {
           const settled = t.outputSchema
             ? { ...applyStructured(final, t.outputSchema), task: t.task }

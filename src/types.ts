@@ -9,6 +9,10 @@ export interface SubagentParams {
   timeoutMs?: number;
   /** Retry attempts for a failed child run (single mode). 0–3, default 0. */
   retries?: number;
+  /** Base backoff delay in ms between retry attempts (exponential, 30s cap). */
+  retryBackoffMs?: number;
+  /** Failure classes eligible for retry; default: any failed result. */
+  retryOn?: Array<'error' | 'timeout'>;
   /** JSON Schema the child's reply must satisfy (single mode only, v1). */
   outputSchema?: Record<string, unknown>;
   /** Persist this run's session and report its id (single mode). */
@@ -22,6 +26,8 @@ export interface SubagentParams {
     thinkingLevel?: ThinkingLevel;
     timeoutMs?: number;
     retries?: number;
+    retryBackoffMs?: number;
+    retryOn?: Array<'error' | 'timeout'>;
     outputSchema?: Record<string, unknown>;
     session?: boolean;
     resume?: string;
@@ -33,6 +39,8 @@ export interface SubagentParams {
     thinkingLevel?: ThinkingLevel;
     timeoutMs?: number;
     retries?: number;
+    retryBackoffMs?: number;
+    retryOn?: Array<'error' | 'timeout'>;
     outputSchema?: Record<string, unknown>;
     session?: boolean;
     resume?: string;
