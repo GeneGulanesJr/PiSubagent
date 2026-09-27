@@ -69,7 +69,7 @@ describe('review fixes', () => {
       type: 'object',
       required: ['toString'],
     });
-    expect(structuredError).toContain('missing required property: toString');
+    expect(structuredError).toContain("must have required property 'toString'");
   });
 
   it('runWithRetries accumulates usage across retries', async () => {

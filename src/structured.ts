@@ -1,4 +1,8 @@
 import type { Message } from '@earendil-works/pi-ai';
+// Named import: under NodeNext + "type": "module", ajv (a CJS package)
+// resolves a default import to the module namespace, which isn't
+// constructable — but its bundle also exports the class as `Ajv`.
+import { Ajv } from 'ajv';
 import { getFinalOutput } from './output.js';
 import type { SingleResult } from './types.js';
 
@@ -7,10 +11,8 @@ import type { SingleResult } from './types.js';
  *
  * The child model is instructed to reply with pure JSON matching the
  * caller's JSON Schema. After the run, the final assistant text is
- * fence-stripped, parsed, and lightly validated (top-level `type`,
- * `required` keys, per-property `type` when declared). Full JSON-Schema
- * validation is deliberately out of scope for v1 — no new dependency,
- * no TypeBox-Value assumptions about unkinded schemas.
+ * fence-stripped, parsed, and validated against the full JSON Schema
+ * via ajv (strict: false).
  */
 
 /** Prompt suffix instructing the child to emit pure JSON. */
@@ -33,67 +35,23 @@ function stripFences(text: string): string {
   return body.trim();
 }
 
-/** Minimal type check: does `value` satisfy a JSON-Schema `type` string? */
-function matchesType(value: unknown, type: string): boolean {
-  switch (type) {
-    case 'object':
-      return typeof value === 'object' && value !== null && !Array.isArray(value);
-    case 'array':
-      return Array.isArray(value);
-    case 'string':
-      return typeof value === 'string';
-    case 'number':
-      return typeof value === 'number' && Number.isFinite(value);
-    case 'boolean':
-      return typeof value === 'boolean';
-    case 'null':
-      return value === null;
-    default:
-      return true; // unknown/unrepresented keywords pass in v1
-  }
-}
-
 /**
- * Light validation against the caller's schema. Returns an error string on
- * the first violation, or null when the value passes. Only checks the
- * schema's `type`, `required`, and per-property `type` — everything else
- * is v2 territory (full JSON-Schema validation).
+ * Full JSON-Schema validation via ajv. Returns the first violation as
+ * `<instancePath> <message>` (empty instancePath → just the message),
+ * or null when the value passes. `ownProperties` keeps prototype-chain
+ * keys (e.g. 'toString') from satisfying `required` — Object.hasOwn
+ * semantics.
  */
 export function validateAgainstSchema(
   value: unknown,
   schema: Record<string, unknown>,
 ): string | null {
-  if (typeof schema.type === 'string' && !matchesType(value, schema.type)) {
-    return `type mismatch: expected ${schema.type}`;
-  }
-  const objectish =
-    schema.type === 'object' ||
-    (typeof value === 'object' && value !== null && !Array.isArray(value));
-  if (objectish) {
-    const required = Array.isArray(schema.required) ? schema.required : [];
-    const props =
-      typeof schema.properties === 'object' && schema.properties !== null
-        ? (schema.properties as Record<string, Record<string, unknown>>)
-        : {};
-    const obj = value as Record<string, unknown>;
-    for (const key of required) {
-      // Object.hasOwn: `key in obj` would match Object.prototype props
-      // ('toString', 'constructor'), letting required keys pass vacuously.
-      if (!Object.hasOwn(obj, key) || obj[key] === undefined) {
-        return `missing required property: ${key}`;
-      }
-    }
-    for (const [key, propSchema] of Object.entries(props)) {
-      if (
-        obj[key] !== undefined &&
-        typeof propSchema?.type === 'string' &&
-        !matchesType(obj[key], propSchema.type)
-      ) {
-        return `property ${key}: expected ${propSchema.type}`;
-      }
-    }
-  }
-  return null;
+  const ajv = new Ajv({ strict: false, allErrors: false, ownProperties: true });
+  const validate = ajv.compile(schema);
+  if (validate(value)) return null;
+  const err = validate.errors?.[0];
+  if (!err?.message) return 'validation failed';
+  return err.instancePath ? `${err.instancePath} ${err.message}` : err.message;
 }
 
 export interface StructuredExtraction {

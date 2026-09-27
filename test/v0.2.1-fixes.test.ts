@@ -118,7 +118,7 @@ describe('v0.2.1 fixes', () => {
 
   it('type:object schema still rejects null payloads', () => {
     const { structuredError } = extractStructured(msgs('null'), { type: 'object' });
-    expect(structuredError).toContain('type mismatch: expected object');
+    expect(structuredError).toContain('must be object');
   });
 
   it('outputSchema still works in single mode', async () => {

@@ -96,17 +96,17 @@ describe('extractStructured', () => {
 
   it('reports top-level type mismatch', () => {
     const r = extractStructured(msgs('[]'), { type: 'object' });
-    expect(r.structuredError).toContain('type mismatch: expected object');
+    expect(r.structuredError).toContain('must be object');
   });
 
   it('reports missing required property', () => {
     const r = extractStructured(msgs('{"wrong":1}'), schema);
-    expect(r.structuredError).toContain('missing required property: answer');
+    expect(r.structuredError).toContain("must have required property 'answer'");
   });
 
   it('reports property type mismatch', () => {
     const r = extractStructured(msgs('{"answer":42}'), schema);
-    expect(r.structuredError).toContain('property answer: expected string');
+    expect(r.structuredError).toContain('/answer must be string');
   });
 });
 
@@ -114,6 +114,17 @@ describe('validateAgainstSchema', () => {
   it('returns null for valid values and permissive schemas', () => {
     expect(validateAgainstSchema({ answer: 'yes' }, schema)).toBeNull();
     expect(validateAgainstSchema({}, {})).toBeNull();
+  });
+
+  it('enforces keywords the light validator ignored (maxLength)', () => {
+    const capped = { type: 'object', properties: { answer: { maxLength: 1 } } } as const;
+    // Exactly at the limit → valid ('x' has length 1).
+    expect(validateAgainstSchema({ answer: 'x' }, capped)).toBeNull();
+    // Beyond the limit → ajv flags it; the old light validator ignored
+    // maxLength entirely and returned null.
+    expect(validateAgainstSchema({ answer: 'toolong' }, capped)).toBe(
+      '/answer must NOT have more than 1 characters',
+    );
   });
 });
 
