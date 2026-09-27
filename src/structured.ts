@@ -3,6 +3,7 @@ import type { Message } from '@earendil-works/pi-ai';
 // resolves a default import to the module namespace, which isn't
 // constructable — but its bundle also exports the class as `Ajv`.
 import { Ajv } from 'ajv';
+import type { ValidateFunction } from 'ajv';
 import { getFinalOutput } from './output.js';
 import type { SingleResult } from './types.js';
 
@@ -56,7 +57,7 @@ export function validateAgainstSchema(
   schema: Record<string, unknown>,
 ): string | null {
   const ajv = new Ajv({ strict: 'log', allErrors: false, ownProperties: true });
-  let validate: Ajv.ValidateFunction;
+  let validate: ValidateFunction;
   try {
     validate = ajv.compile(schema);
   } catch (err) {
