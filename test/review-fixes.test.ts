@@ -8,6 +8,7 @@ import { runWithRetries } from '../src/dispatch/internal.js';
 import { extractStructured } from '../src/structured.js';
 import type { AgentRunner, AgentRunInput } from '../src/runner/runner.js';
 import type { AgentConfig, SingleResult } from '../src/types.js';
+import { emitCloseSticky, waitForCloseListener } from './helpers/fake-close.js';
 
 const agent: AgentConfig = {
   name: 'a',
@@ -29,15 +30,9 @@ function makeFakeProc() {
   const finish = (code: number | null = 0) => {
     stdout.push(null);
     stderr.push(null);
-    proc.emit('close', code);
+    emitCloseSticky(proc, code);
   };
   return { proc, finish };
-}
-async function waitForCloseListener(p: ReturnType<typeof makeFakeProc>): Promise<void> {
-  for (let i = 0; i < 200; i++) {
-    if (p.proc.listenerCount('close') >= 1) return;
-    await new Promise((resolve) => setImmediate(resolve));
-  }
 }
 function msgs(text: string): Message[] {
   return [{ role: 'assistant', content: [{ type: 'text', text }] }] as unknown as Message[];
@@ -126,7 +121,7 @@ describe('review fixes', () => {
     const fake = makeFakeProc();
     const runner = new SubprocessRunner({ spawnFn: (() => fake.proc) as never });
     const p = runner.run({ ...input, timeoutMs: 0 });
-    await waitForCloseListener(fake);
+    await waitForCloseListener(fake.proc);
     // Let the 1ms timeout fire before closing the fake process.
     await new Promise((resolve) => setTimeout(resolve, 60));
     expect(fake.proc.kill).toHaveBeenCalledWith('SIGTERM');

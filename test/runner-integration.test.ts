@@ -11,6 +11,7 @@ import {
 } from '../src/dispatch/progress.js';
 import { selectRunner } from '../src/dispatch/execute.js';
 import type { SingleResult, OnUpdateCallback } from '../src/types.js';
+import { emitCloseSticky, waitForCloseListener } from './helpers/fake-close.js';
 
 // ---------------------------------------------------------------------------
 // fs mock — intercept fs.rmSync to verify tmpdir cleanup behavior. The mock
@@ -89,7 +90,7 @@ function makeFakeProc(opts: { killFiresClose?: boolean } = {}): FakeProc {
   proc.kill = vi.fn(((_sig?: NodeJS.Signals) => {
     state.killed = true;
     if (opts.killFiresClose) {
-      setImmediate(() => proc.emit('close', null));
+      setImmediate(() => emitCloseSticky(proc, null));
     }
     return true;
   }) as unknown as typeof proc.kill);
@@ -109,7 +110,7 @@ function makeFakeProc(opts: { killFiresClose?: boolean } = {}): FakeProc {
       stdout.push(null);
       stderr.push(null);
       state.exitCode = code;
-      proc.emit('close', code);
+      emitCloseSticky(proc, code);
     },
     writeStdout(chunk) {
       stdout.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
@@ -138,18 +139,6 @@ function tick(): Promise<void> {
   return new Promise((resolve) => setImmediate(resolve));
 }
 
-/**
- * Wait until the runner has attached a 'close' listener. The runner
- * subscribes inside the spawnFn promise body, which races against this
- * helper. Polling avoids the race without resorting to real timers.
- */
-async function waitForCloseListener(proc: FakeProc, maxTicks = 200): Promise<void> {
-  for (let i = 0; i < maxTicks; i++) {
-    if (proc.proc.listenerCount('close') >= 1) return;
-    await new Promise((resolve) => setImmediate(resolve));
-  }
-}
-
 // ---------------------------------------------------------------------------
 // 1. Abort mid-run
 // ---------------------------------------------------------------------------
@@ -166,7 +155,7 @@ describe('SubprocessRunner.run — abort mid-run', () => {
     // process close naturally (the runner's SIGTERM doesn't auto-close
     // unless killFiresClose is on; here we simulate the OS sending SIGTERM
     // by emitting close after the abort).
-    await waitForCloseListener(fake);
+    await waitForCloseListener(fake.proc);
     controller.abort();
     expect(fake.proc.kill).toHaveBeenCalledWith('SIGTERM');
 
@@ -188,7 +177,7 @@ describe('SubprocessRunner.run — abort mid-run', () => {
     controller.abort(); // pre-aborted
     const promise = runner.run(baseInput, controller.signal);
 
-    await waitForCloseListener(fake);
+    await waitForCloseListener(fake.proc);
     // The signal-aborted branch fires onAbort() synchronously; SIGTERM
     // is delivered before the runner registers any abort listener.
     expect(fake.proc.kill).toHaveBeenCalledWith('SIGTERM');
@@ -208,7 +197,7 @@ describe('SubprocessRunner.run — abort mid-run', () => {
 
       // Flush microtasks so the runner reaches its listener wiring.
       await vi.advanceTimersByTimeAsync(0);
-      await waitForCloseListener(fake);
+      await waitForCloseListener(fake.proc);
 
       controller.abort();
       expect(fake.proc.kill).toHaveBeenCalledWith('SIGTERM');
@@ -242,7 +231,7 @@ describe('SubprocessRunner.run — abort mid-run', () => {
     const controller = new AbortController();
     const promise = runner.run(baseInput, controller.signal);
 
-    await waitForCloseListener(fake);
+    await waitForCloseListener(fake.proc);
     controller.abort();
     // SIGTERM fired; killFiresClose schedules a close → the runner settles.
     // Wait for that scheduled close to fire and the promise to resolve.
@@ -277,7 +266,7 @@ describe('SubprocessRunner.run — fs cleanup on error paths', () => {
       agent: { ...baseAgent, systemPrompt: 'You are a scout.' },
     });
 
-    await waitForCloseListener(fake);
+    await waitForCloseListener(fake.proc);
     fake.writeStdout(validLine + '\n');
     await tick();
     fake.finish(0);
@@ -310,7 +299,7 @@ describe('SubprocessRunner.run — fs cleanup on error paths', () => {
       agent: { ...baseAgent, systemPrompt: 'You are a scout.' },
     });
 
-    await waitForCloseListener(fake);
+    await waitForCloseListener(fake.proc);
     // Simulate the process erroring before close fires.
     fake.proc.emit('error', new Error('spawn failed'));
     fake.endStreams();
@@ -341,7 +330,7 @@ describe('SubprocessRunner.run — fs cleanup on error paths', () => {
       agent: { ...baseAgent, systemPrompt: 'You are a scout.' },
     });
 
-    await waitForCloseListener(fake);
+    await waitForCloseListener(fake.proc);
     // Push > 1MB to stderr to overflow the cap. Chunk into a few writes
     // so the stream drain can interleave with the runner's data handler.
     const big = 'y'.repeat(400 * 1024); // 400KB
@@ -388,7 +377,7 @@ describe('SubprocessRunner.run — JSONL streaming partial results', () => {
     const stream = events.map((e) => JSON.stringify(e)).join('\n') + '\n';
 
     const promise = runner.run(baseInput, undefined, onUpdate);
-    await waitForCloseListener(fake);
+    await waitForCloseListener(fake.proc);
     fake.writeStdout(stream);
     await tick();
     fake.finish(0);
@@ -413,7 +402,7 @@ describe('SubprocessRunner.run — JSONL streaming partial results', () => {
 
     const promise = runner.run(baseInput, controller.signal, onUpdate);
 
-    await waitForCloseListener(fake);
+    await waitForCloseListener(fake.proc);
     // Emit two JSONL events BEFORE aborting — they should still land in
     // the partial result.
     fake.writeStdout(stream);
@@ -436,7 +425,7 @@ describe('SubprocessRunner.run — JSONL streaming partial results', () => {
       [validLine, '{not json', validLine, '{also bad', '{also bad 2'].join('\n') + '\n';
 
     const promise = runner.run(baseInput);
-    await waitForCloseListener(fake);
+    await waitForCloseListener(fake.proc);
     fake.writeStdout(stream);
     await tick();
     fake.finish(0);
@@ -470,7 +459,7 @@ describe('SubprocessRunner.run — onUpdate exception isolation', () => {
     const stream = events.map((e) => JSON.stringify(e)).join('\n') + '\n';
 
     const promise = runner.run(baseInput, undefined, onUpdate);
-    await waitForCloseListener(fake);
+    await waitForCloseListener(fake.proc);
     fake.writeStdout(stream);
     await tick();
     fake.finish(0);
@@ -501,7 +490,7 @@ describe('SubprocessRunner.run — onUpdate exception isolation', () => {
     const stream = events.map((e) => JSON.stringify(e)).join('\n') + '\n';
 
     const promise = runner.run(baseInput, undefined, onUpdate);
-    await waitForCloseListener(fake);
+    await waitForCloseListener(fake.proc);
     fake.writeStdout(stream);
     await tick();
     fake.finish(0);
@@ -530,7 +519,7 @@ describe('SubprocessRunner.run — stdout 1MB buffer cap', () => {
     const padding = 'x'.repeat(2 * 1024 * 1024);
 
     const promise = runner.run(baseInput);
-    await waitForCloseListener(fake);
+    await waitForCloseListener(fake.proc);
     fake.writeStdout(validLine + '\n' + validLine + '\n');
     await tick();
     fake.writeStdout(padding);
@@ -552,7 +541,7 @@ describe('SubprocessRunner.run — stdout 1MB buffer cap', () => {
     const runner = new SubprocessRunner({ spawnFn: (() => fake.proc) as never });
 
     const promise = runner.run(baseInput);
-    await waitForCloseListener(fake);
+    await waitForCloseListener(fake.proc);
 
     // Push 2MB to stderr in 256KB chunks — must clamp to exactly 1MB.
     const chunk = 'y'.repeat(256 * 1024);

@@ -8,6 +8,7 @@ import { execute } from '../src/dispatch.js';
 import { isFailedResult } from '../src/output.js';
 import type { AgentRunner, AgentRunInput } from '../src/runner/runner.js';
 import type { AgentConfig, SingleResult } from '../src/types.js';
+import { emitCloseSticky, waitForCloseListener } from './helpers/fake-close.js';
 
 const baseAgent = {
   name: 'scout',
@@ -28,7 +29,7 @@ function makeFakeProc(opts: { killFiresClose?: boolean } = {}) {
   const state = { killed: false, exitCode: null as number | null };
   proc.kill = vi.fn(((_sig?: NodeJS.Signals) => {
     state.killed = true;
-    if (opts.killFiresClose) setImmediate(() => proc.emit('close', null));
+    if (opts.killFiresClose) setImmediate(() => emitCloseSticky(proc, null));
     return true;
   }) as unknown as typeof proc.kill);
   return {
@@ -45,19 +46,9 @@ function makeFakeProc(opts: { killFiresClose?: boolean } = {}) {
       stdout.push(null);
       stderr.push(null);
       state.exitCode = code;
-      proc.emit('close', code);
+      emitCloseSticky(proc, code);
     },
   };
-}
-
-async function waitForCloseListener(
-  proc: ReturnType<typeof makeFakeProc>,
-  maxTicks = 200,
-): Promise<void> {
-  for (let i = 0; i < maxTicks; i++) {
-    if (proc.proc.listenerCount('close') >= 1) return;
-    await new Promise((resolve) => setImmediate(resolve));
-  }
 }
 
 describe('SubprocessRunner.run — per-dispatch timeout', () => {
@@ -65,7 +56,7 @@ describe('SubprocessRunner.run — per-dispatch timeout', () => {
     const fake = makeFakeProc();
     const runner = new SubprocessRunner({ spawnFn: (() => fake.proc) as never });
     const promise = runner.run({ ...baseInput, timeoutMs: 50 });
-    await waitForCloseListener(fake);
+    await waitForCloseListener(fake.proc);
     await new Promise((r) => setTimeout(r, 120));
     expect(fake.proc.kill).toHaveBeenCalledWith('SIGTERM');
     fake.finish(143);
@@ -80,7 +71,7 @@ describe('SubprocessRunner.run — per-dispatch timeout', () => {
     const spawnFn = (() => fake.proc) as never;
     const runner = new SubprocessRunner({ spawnFn, runTimeoutMs: 10_000 });
     const promise = runner.run({ ...baseInput, timeoutMs: 50 });
-    await waitForCloseListener(fake);
+    await waitForCloseListener(fake.proc);
     await new Promise((r) => setTimeout(r, 120));
     expect(fake.proc.kill).toHaveBeenCalledTimes(1);
     expect(fake.proc.kill).toHaveBeenCalledWith('SIGTERM');
@@ -98,7 +89,7 @@ describe('SubprocessRunner.run — per-dispatch timeout', () => {
       runTimeoutMs: 10_000,
     });
     const promise = runner.run({ ...baseInput });
-    await waitForCloseListener(fake);
+    await waitForCloseListener(fake.proc);
     fake.finish(0);
     const result = await promise;
     expect(result.timedOut).toBeUndefined();

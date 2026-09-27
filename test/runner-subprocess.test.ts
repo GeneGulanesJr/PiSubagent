@@ -11,6 +11,7 @@ import {
   parseJsonlEvents,
   SubprocessRunner,
 } from '../src/runner/subprocess.js';
+import { emitCloseSticky } from './helpers/fake-close.js';
 
 // Hoisted mocks for fs.rmSync, fs.promises.writeFile, and
 // fs.promises.mkdtemp. We mock BOTH `node:fs` (so subprocess.ts's
@@ -310,7 +311,7 @@ describe('SubprocessRunner.run hardening', () => {
     proc.kill = vi.fn(((sig?: NodeJS.Signals) => {
       (proc as unknown as { killed: boolean }).killed = true;
       if (opts.killFiresClose) {
-        setImmediate(() => proc.emit('close', null));
+        setImmediate(() => emitCloseSticky(proc, null));
       }
       return true;
     }) as unknown as typeof proc.kill);
@@ -323,24 +324,31 @@ describe('SubprocessRunner.run hardening', () => {
     stdoutChunks: (string | Buffer)[],
     closeCode: number | null = 0,
   ): Promise<void> {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const stdout = (proc as unknown as { stdout: Readable }).stdout;
       const stderr = (proc as unknown as { stderr: Readable }).stderr;
       for (const c of stdoutChunks) stdout.push(c);
       stdout.push(null);
       stderr.push(null);
       proc.once('close', () => resolve());
-      // Poll for the runner's close listener before emitting close. The
-      // runner adds a single 'on' listener inside the spawn Promise body;
-      // combined with this helper's 'once' listener, the count reaches 2
-      // once the runner is ready. Avoids a race where the runner hasn't
-      // reached its await new Promise(...) yet because an earlier await
-      // (e.g. fs.realpath in writePromptFile) is still pending.
+      // Poll for the runner's close listener before emitting close (bridge
+      // above + runner's 'on' ⇒ count 2). Each poll hops a macrotask
+      // (setImmediate), giving the stream machinery time to drain the
+      // chunks pushed above — delivering close on the microtask queue
+      // would resolve the run before any 'data' event fires. Unlike the
+      // old silent give-up-after-200-ticks poll, running dry now rejects
+      // (fast, clear failure instead of a 60s hang), and the final
+      // emission is sticky (emitCloseSticky) so close can never land
+      // before a listener exists — the race seen on slow CI filesystems
+      // (ubuntu/node22) when a real-fs await delays spawn.
       let attempts = 0;
       const waitForListener = () => {
-        if (++attempts > 200) return; // give up after ~200 ticks
+        if (++attempts > 200) {
+          reject(new Error('runner never subscribed to close — spawn did not happen?'));
+          return;
+        }
         if (proc.listenerCount('close') >= 2) {
-          proc.emit('close', closeCode);
+          emitCloseSticky(proc, closeCode);
         } else {
           setImmediate(waitForListener);
         }

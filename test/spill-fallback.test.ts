@@ -3,6 +3,7 @@ import { EventEmitter } from 'node:events';
 import { Readable } from 'node:stream';
 import type { ChildProcess } from 'node:child_process';
 import { SubprocessRunner } from '../src/runner/subprocess.js';
+import { emitCloseSticky, waitForCloseListener } from './helpers/fake-close.js';
 
 const baseInput = {
   agent: {
@@ -38,7 +39,7 @@ function makeFakeProc() {
     const close = () => {
       if (closed) return;
       closed = true;
-      proc.emit('close', code);
+      emitCloseSticky(proc, code);
     };
     stdout.on('end', close);
     stderr.on('end', close);
@@ -54,13 +55,6 @@ function makeFakeProc() {
   return { proc, finish };
 }
 
-async function waitForCloseListener(p: ReturnType<typeof makeFakeProc>): Promise<void> {
-  for (let i = 0; i < 200; i++) {
-    if (p.proc.listenerCount('close') >= 1) return;
-    await new Promise((resolve) => setImmediate(resolve));
-  }
-}
-
 describe('SubprocessRunner — spill fallback (spillFactory injection)', () => {
   it('factory returning null → plain truncation fallback', async () => {
     const fake = makeFakeProc();
@@ -69,7 +63,7 @@ describe('SubprocessRunner — spill fallback (spillFactory injection)', () => {
       spillFactory: () => null,
     });
     const p = runner.run(baseInput);
-    await waitForCloseListener(fake);
+    await waitForCloseListener(fake.proc);
     fake.proc.stdout.push(Buffer.from('a'.repeat(1100 * 1024)));
     fake.proc.stdout.push(Buffer.from('b'.repeat(64)));
     fake.finish(0);
@@ -90,7 +84,7 @@ describe('SubprocessRunner — spill fallback (spillFactory injection)', () => {
       },
     });
     const p = runner.run(baseInput);
-    await waitForCloseListener(fake);
+    await waitForCloseListener(fake.proc);
     fake.proc.stdout.push(Buffer.from('a'.repeat(1100 * 1024)));
     fake.proc.stdout.push(Buffer.from('b'.repeat(64)));
     fake.finish(0);
@@ -105,7 +99,7 @@ describe('SubprocessRunner — spill fallback (spillFactory injection)', () => {
       spillFactory: () => '/tmp/fake-spill.log',
     });
     const p = runner.run(baseInput);
-    await waitForCloseListener(fake);
+    await waitForCloseListener(fake.proc);
     fake.proc.stdout.push(Buffer.from('a'.repeat(1100 * 1024)));
     fake.proc.stdout.push(Buffer.from('b'.repeat(64)));
     fake.finish(0);

@@ -7,6 +7,7 @@ import * as path from 'node:path';
 import type { ChildProcess } from 'node:child_process';
 import { SubprocessRunner } from '../src/runner/subprocess.js';
 import type { SingleResult } from '../src/types.js';
+import { emitCloseSticky, waitForCloseListener } from './helpers/fake-close.js';
 
 const baseAgent = {
   name: 'scout',
@@ -55,7 +56,7 @@ function makeFakeProc(): FakeProc {
       const close = () => {
         if (closed) return;
         closed = true;
-        proc.emit('close', code);
+        emitCloseSticky(proc, code);
       };
       stdout.on('end', close);
       stderr.on('end', close);
@@ -80,16 +81,6 @@ function makeFakeProc(): FakeProc {
   return self;
 }
 
-async function waitForCloseListener(
-  proc: ReturnType<typeof makeFakeProc>,
-  maxTicks = 200,
-): Promise<void> {
-  for (let i = 0; i < maxTicks; i++) {
-    if (proc.proc.listenerCount('close') >= 1) return;
-    await new Promise((resolve) => setImmediate(resolve));
-  }
-}
-
 const spillDirs: string[] = [];
 afterAll(() => {
   for (const d of spillDirs) {
@@ -106,7 +97,7 @@ describe('SubprocessRunner.run — stdout spill', () => {
     const fake = makeFakeProc();
     const runner = new SubprocessRunner({ spawnFn: (() => fake.proc) as never });
     const p: Promise<SingleResult> = runner.run(baseInput);
-    await waitForCloseListener(fake);
+    await waitForCloseListener(fake.proc);
     fake.writeStdout(
       JSON.stringify({ type: 'message_end', message: { role: 'assistant', content: [] } }) + '\n',
     );
@@ -120,7 +111,7 @@ describe('SubprocessRunner.run — stdout spill', () => {
     const fake = makeFakeProc();
     const runner = new SubprocessRunner({ spawnFn: (() => fake.proc) as never });
     const p: Promise<SingleResult> = runner.run(baseInput);
-    await waitForCloseListener(fake);
+    await waitForCloseListener(fake.proc);
     fake.writeStdout('a'.repeat(1100 * 1024));
     fake.writeStdout('b'.repeat(50 * 1024));
     fake.writeStdout('c'.repeat(1024));
@@ -143,7 +134,7 @@ describe('SubprocessRunner.run — stdout spill', () => {
     const fake = makeFakeProc();
     const runner = new SubprocessRunner({ spawnFn: (() => fake.proc) as never });
     const p: Promise<SingleResult> = runner.run(baseInput);
-    await waitForCloseListener(fake);
+    await waitForCloseListener(fake.proc);
     fake.writeStdout('a'.repeat(1100 * 1024));
     fake.writeStdout('b'.repeat(50 * 1024));
     fake.writeStdout('c'.repeat(1024));
@@ -160,7 +151,7 @@ describe('SubprocessRunner.run — stdout spill', () => {
     const fake = makeFakeProc();
     const runner = new SubprocessRunner({ spawnFn: (() => fake.proc) as never });
     const p: Promise<SingleResult> = runner.run(baseInput);
-    await waitForCloseListener(fake);
+    await waitForCloseListener(fake.proc);
     fake.writeStdout(
       JSON.stringify({ type: 'message_end', message: { role: 'assistant', content: [] } }) + '\n',
     );
@@ -176,7 +167,7 @@ describe('SubprocessRunner.run — stdout spill', () => {
     const fake = makeFakeProc();
     const runner = new SubprocessRunner({ spawnFn: (() => fake.proc) as never });
     const p: Promise<SingleResult> = runner.run(baseInput);
-    await waitForCloseListener(fake);
+    await waitForCloseListener(fake.proc);
     fake.writeStdout('a'.repeat(1100 * 1024));
     fake.writeStdout('b'.repeat(50 * 1024));
     fake.finish(0);

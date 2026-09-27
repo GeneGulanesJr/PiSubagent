@@ -9,6 +9,7 @@ import { execute } from '../src/dispatch.js';
 import type { DispatchContext } from '../src/dispatch/types.js';
 import type { AgentRunner, AgentRunInput } from '../src/runner/runner.js';
 import type { AgentConfig } from '../src/types.js';
+import { emitCloseSticky, waitForCloseListener } from './helpers/fake-close.js';
 
 const baseAgent: AgentConfig = {
   name: 'scout',
@@ -28,16 +29,9 @@ function makeFakeProc() {
   const finish = (code: number | null = 0) => {
     stdout.push(null);
     stderr.push(null);
-    proc.emit('close', code);
+    emitCloseSticky(proc, code);
   };
   return { proc, finish };
-}
-
-async function waitForCloseListener(p: ReturnType<typeof makeFakeProc>): Promise<void> {
-  for (let i = 0; i < 200; i++) {
-    if (p.proc.listenerCount('close') >= 1) return;
-    await new Promise((resolve) => setImmediate(resolve));
-  }
 }
 
 function makeRecordingRunner() {
@@ -128,7 +122,7 @@ describe('run — sessionId reporting', () => {
     const fake = makeFakeProc();
     const runner = new SubprocessRunner({ spawnFn: (() => fake.proc) as never });
     const p = runner.run({ ...baseInput, session: true });
-    await waitForCloseListener(fake);
+    await waitForCloseListener(fake.proc);
     fake.finish(0);
     const r = await p;
     expect(r.sessionId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
@@ -138,7 +132,7 @@ describe('run — sessionId reporting', () => {
     const fake = makeFakeProc();
     const runner = new SubprocessRunner({ spawnFn: (() => fake.proc) as never });
     const p = runner.run({ ...baseInput, sessionId: 'fixed-id' });
-    await waitForCloseListener(fake);
+    await waitForCloseListener(fake.proc);
     fake.finish(0);
     const r = await p;
     expect(r.sessionId).toBe('fixed-id');
@@ -148,7 +142,7 @@ describe('run — sessionId reporting', () => {
     const fake = makeFakeProc();
     const runner = new SubprocessRunner({ spawnFn: (() => fake.proc) as never });
     const p = runner.run({ ...baseInput, resume: 'r1' });
-    await waitForCloseListener(fake);
+    await waitForCloseListener(fake.proc);
     fake.finish(0);
     const r = await p;
     expect(r.sessionId).toBe('r1');
@@ -158,7 +152,7 @@ describe('run — sessionId reporting', () => {
     const fake = makeFakeProc();
     const runner = new SubprocessRunner({ spawnFn: (() => fake.proc) as never });
     const p = runner.run({ ...baseInput });
-    await waitForCloseListener(fake);
+    await waitForCloseListener(fake.proc);
     fake.finish(0);
     const r = await p;
     expect(r.sessionId).toBeUndefined();
