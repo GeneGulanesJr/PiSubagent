@@ -44,16 +44,24 @@ export interface SubprocessRunnerOptions {
    * `errorMessage: "run timeout after Xms"`. Default: no timeout.
    */
   runTimeoutMs?: number;
+  /**
+   * Injectable spill-file factory for tests; defaults to createSpillFile.
+   * Return null to simulate tmpdir failure and exercise the plain-truncation
+   * fallback path.
+   */
+  spillFactory?: (agentName: string) => string | null;
 }
 
 export class SubprocessRunner implements AgentRunner {
   readonly id = 'subprocess' as const;
   private readonly spawnFn: typeof spawn;
   private readonly runTimeoutMs?: number;
+  private readonly spillFactory: (agentName: string) => string | null;
 
   constructor(options: SubprocessRunnerOptions = {}) {
     this.spawnFn = options.spawnFn ?? spawn;
     this.runTimeoutMs = options.runTimeoutMs;
+    this.spillFactory = options.spillFactory ?? createSpillFile;
   }
 
   /**
@@ -257,7 +265,7 @@ export class SubprocessRunner implements AgentRunner {
             // the full output is never silently lost; otherwise fall back
             // to plain truncation with a one-time stderr marker.
             if (buffer.length > MAX_BUFFER_BYTES) {
-              spillPath = createSpillFile(input.agent.name);
+              spillPath = this.spillFactory(input.agent.name);
               if (spillPath !== null) {
                 result.outputFile = spillPath;
                 try {
