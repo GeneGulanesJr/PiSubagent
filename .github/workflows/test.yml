@@ -5,6 +5,9 @@ on:
     branches: [master]
   pull_request:
     branches: [master]
+  # Weekly heartbeat: a red pipeline must surface even when master is quiet.
+  schedule:
+    - cron: '17 6 * * 1'
 
 # Cancel in-flight CI runs for the same ref when a new commit lands.
 concurrency:
