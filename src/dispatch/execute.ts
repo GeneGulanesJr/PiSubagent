@@ -37,7 +37,7 @@ export async function execute(
       content: [
         {
           type: 'text',
-          text: 'Invalid parameters. outputSchema is single-mode only; remove it from tasks/chain dispatches.',
+          text: 'Invalid parameters. Top-level outputSchema is single-mode only; set outputSchema per item in tasks/chain instead.',
         },
       ],
       details: { ...baseDetails(mode, params, null), results: [] },

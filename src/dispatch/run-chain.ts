@@ -4,6 +4,7 @@ import {
   getResultOutput,
   truncateParallelOutput,
 } from '../output.js';
+import { applyStructured, withStructuredInstruction } from '../structured.js';
 import type { AgentRunner } from '../runner/runner.js';
 import type { SubagentParams, AgentConfig, SingleResult } from '../types.js';
 import { PER_TASK_OUTPUT_CAP } from './limits.js';
@@ -26,7 +27,10 @@ export async function runChain(
 
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i];
-    const resolvedTask = step.task.replace(/\{previous\}/g, previousOutput);
+    const resolvedTask = withStructuredInstruction(
+      step.task.replace(/\{previous\}/g, previousOutput),
+      step.outputSchema,
+    );
     results.push(stubResult(lookup(step.agent), step.task));
     emit?.(snapshot('chain', base, results, steps.length));
     const result = await runWithRetries(
@@ -49,7 +53,10 @@ export async function runChain(
         emit?.(snapshot('chain', base, results, steps.length));
       },
     );
-    results[i] = { ...result, running: false };
+    const settled = step.outputSchema
+      ? { ...applyStructured(result, step.outputSchema), task: step.task }
+      : result;
+    results[i] = { ...settled, running: false };
     emit?.(snapshot('chain', base, results, steps.length));
 
     if (isFailedResult(result)) {

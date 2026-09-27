@@ -1,4 +1,5 @@
 import { isFailedResult, getResultOutput, truncateParallelOutput } from '../output.js';
+import { applyStructured, withStructuredInstruction } from '../structured.js';
 import type { AgentRunner } from '../runner/runner.js';
 import type { SubagentParams, AgentConfig, SingleResult } from '../types.js';
 import { MAX_CONCURRENCY, MAX_PARALLEL_TASKS, PER_TASK_OUTPUT_CAP } from './limits.js';
@@ -46,7 +47,7 @@ export async function runParallel(
           runner,
           {
             agent: lookup(t.agent),
-            task: t.task,
+            task: withStructuredInstruction(t.task, t.outputSchema),
             cwd: t.cwd ?? ctx.cwd,
             thinkingLevelOverride: t.thinkingLevel,
             timeoutMs: t.timeoutMs,
@@ -61,7 +62,10 @@ export async function runParallel(
             emit?.(snapshot('parallel', base, results, tasks.length));
           },
         ).then((final) => {
-          results[i] = { ...final, running: false };
+          const settled = t.outputSchema
+            ? { ...applyStructured(final, t.outputSchema), task: t.task }
+            : final;
+          results[i] = { ...settled, running: false };
           emit?.(snapshot('parallel', base, results, tasks.length));
         });
       }),

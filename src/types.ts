@@ -22,6 +22,7 @@ export interface SubagentParams {
     thinkingLevel?: ThinkingLevel;
     timeoutMs?: number;
     retries?: number;
+    outputSchema?: Record<string, unknown>;
     session?: boolean;
     resume?: string;
   }>;
@@ -32,6 +33,7 @@ export interface SubagentParams {
     thinkingLevel?: ThinkingLevel;
     timeoutMs?: number;
     retries?: number;
+    outputSchema?: Record<string, unknown>;
     session?: boolean;
     resume?: string;
   }>;

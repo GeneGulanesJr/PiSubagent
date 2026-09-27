@@ -1,5 +1,5 @@
 import { getFinalOutput, isFailedResult } from '../output.js';
-import { buildStructuredInstruction, applyStructured } from '../structured.js';
+import { applyStructured, withStructuredInstruction } from '../structured.js';
 import type { AgentRunner } from '../runner/runner.js';
 import type { SubagentParams, AgentConfig, SingleResult } from '../types.js';
 import { baseDetails, parentDefaults, runWithRetries, stubResult } from './internal.js';
@@ -16,9 +16,7 @@ export async function runSingle(
   const agentCfg = lookup(params.agent!);
   const base = baseDetails('single', params, null);
   const results: SingleResult[] = [stubResult(agentCfg, params.task!)];
-  const task = params.outputSchema
-    ? `${params.task!}\n\n${buildStructuredInstruction(params.outputSchema)}`
-    : params.task!;
+  const task = withStructuredInstruction(params.task!, params.outputSchema);
   const emit = createProgressEmitter(ctx.onUpdate, ctx.progressIntervalMs);
   emit?.(snapshot('single', base, results, 1));
   const result = await runWithRetries(

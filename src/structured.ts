@@ -27,6 +27,11 @@ export function buildStructuredInstruction(schema: object): string {
   ].join('\n');
 }
 
+/** Append the structured-output instruction when a schema is present. */
+export function withStructuredInstruction(task: string, schema?: Record<string, unknown>): string {
+  return schema ? `${task}\n\n${buildStructuredInstruction(schema)}` : task;
+}
+
 /** Strip optional markdown fences (```json ... ``` or ``` ... ```). */
 function stripFences(text: string): string {
   const trimmed = text.trim();

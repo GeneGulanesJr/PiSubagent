@@ -37,6 +37,12 @@ const TaskItem = Type.Object({
   thinkingLevel: Type.Optional(ThinkingLevelSchema),
   timeoutMs: TimeoutMsSchema,
   retries: RetriesSchema,
+  outputSchema: Type.Optional(
+    Type.Record(Type.String(), Type.Unknown(), {
+      description:
+        'JSON Schema for THIS item. Reply is parsed+validated (ajv); value lands on results[i].data, failures on results[i].structuredError.',
+    }),
+  ),
   session: Type.Optional(
     Type.Boolean({ description: 'Persist this run and report its session id.' }),
   ),
@@ -50,6 +56,12 @@ const ChainItem = Type.Object({
   thinkingLevel: Type.Optional(ThinkingLevelSchema),
   timeoutMs: TimeoutMsSchema,
   retries: RetriesSchema,
+  outputSchema: Type.Optional(
+    Type.Record(Type.String(), Type.Unknown(), {
+      description:
+        'JSON Schema for THIS item. Reply is parsed+validated (ajv); value lands on results[i].data, failures on results[i].structuredError.',
+    }),
+  ),
   session: Type.Optional(
     Type.Boolean({ description: 'Persist this run and report its session id.' }),
   ),
@@ -76,7 +88,7 @@ const SubagentParamsSchema = Type.Object({
   outputSchema: Type.Optional(
     Type.Record(Type.String(), Type.Unknown(), {
       description:
-        'JSON Schema (single mode only) the child reply must match. Reply is parsed+lightly validated; value lands on results[0].data, or results[0].structuredError describes the failure.',
+        'JSON Schema (single mode only; set outputSchema per item in tasks/chain for parallel/chain use) the child reply must match. Reply is parsed+lightly validated; value lands on results[0].data, or results[0].structuredError describes the failure.',
     }),
   ),
   session: Type.Optional(
