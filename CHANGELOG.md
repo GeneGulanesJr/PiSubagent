@@ -5,6 +5,50 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-09-27
+
+Structured-everywhere minor: full JSON-Schema validation, per-item outputSchema
+for parallel/chain, retry backoff + filtering, sessionDir passthrough, TUI
+result badges, and dogfood docs. 289+ tests across 28 files, all green.
+
+### Added
+
+- **Full JSON-Schema validation** (`ajv ^8.20.0`, `strict: false`,
+  `ownProperties: true`). `validateAgainstSchema` is now backed by ajv —
+  schemas support every keyword ajv handles (maxLength, enum, items, …), not
+  just `type`/`required`. Error messages are ajv-shaped (`/answer must be
+string`); `extractStructured` still wraps them as
+  `structured output: schema violation: …`.
+- **Per-item `outputSchema`** on `tasks[]` and `chain[]` items. Each item's
+  child task gets the structured-output instruction appended (chain: after
+  `{previous}` substitution), and its result carries `data` /
+  `structuredError` with the original task text restored. Top-level
+  `outputSchema` remains single-mode (guard message updated).
+- **Retry backoff** (`retryBackoffMs`, 0–60000, default 0) — delay before
+  retry attempt n is `base × 2^(n-1)`, capped at 30s; abort-aware (abort
+  during a backoff sleep cancels the retry).
+- **Retry filtering** (`retryOn: ["error" | "timeout"]`) — failure-class
+  filter; default retries any failed result. Aborts are never retried
+  regardless.
+- **`sessionDir`** — session storage directory override passed to the child
+  as `--session-dir`; available on single params, `tasks[]` items, and
+  `chain[]` items.
+- **TUI result badges** — the rendered result now surfaces `[×N]` attempt
+  counts, `[timed out]`, `[structured ✓]`/`[structured ✗]`, short session
+  ids, and a `→ spilled: <path>` line in single mode.
+- **Dogfood docs** — `librarian` gains an outputSchema (structured citations)
+  section; `debugger`/`test-writer` document resumable iterative sessions;
+  `/pisubagent-doctor` gains check 7 (dispatch-schema surface + ajv import);
+  the `pi-subagent-driven-development` skill documents the runtime knobs for
+  long-running worker tasks.
+
+### Changed
+
+- `structured output` validation errors are now ajv messages (e.g. `must be
+object`, `must have required property 'answer'`) — same pass/fail
+  classification as the light validator for all v0.2.x-documented cases,
+  richer enforcement for everything else.
+
 ## [0.2.1] - 2026-09-27
 
 Polish patch closing the v0.2.0 review debt. One observable behavior change
