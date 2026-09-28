@@ -26,6 +26,8 @@ export async function runSingle(
       task,
       cwd: params.cwd ?? ctx.cwd,
       thinkingLevelOverride: params.thinkingLevel,
+      modelOverride: params.model,
+      tierOverride: params.tier,
       timeoutMs: params.timeoutMs,
       session: params.session,
       resume: params.resume,

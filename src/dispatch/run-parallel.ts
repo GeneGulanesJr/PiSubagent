@@ -50,6 +50,8 @@ export async function runParallel(
             task: withStructuredInstruction(t.task, t.outputSchema),
             cwd: t.cwd ?? ctx.cwd,
             thinkingLevelOverride: t.thinkingLevel,
+            modelOverride: t.model,
+            tierOverride: t.tier,
             timeoutMs: t.timeoutMs,
             session: t.session,
             resume: t.resume,

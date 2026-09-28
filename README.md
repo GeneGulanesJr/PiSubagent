@@ -93,12 +93,12 @@ plan. Reach for it before opening an issue.
 
 ## Built-in agents
 
-- `scout` (Haiku, thinking `low`) — fast recon
+- `scout` (tier `cheap` → MiniMax M2.5, thinking `low`) — fast recon
 - `planner` (Sonnet, thinking `high`) — implementation plans
 - `reviewer` (Sonnet, thinking `high`) — code review
 - `debugger` (Sonnet) — diagnose failures, propose minimal fix
 - `test-writer` (Sonnet) — focused unit tests
-- `librarian` (Sonnet, thinking `low`, web tools) — research and docs lookup with citations
+- `librarian` (tier `cheap` → MiniMax M2.5, thinking `low`, web tools) — research and docs lookup with citations
 - `aws-architect` (Sonnet) — AWS Well-Architected review of IaC
 - `worker` (Sonnet) — general implementation
 
@@ -126,12 +126,37 @@ Frontmatter fields:
 - `description` (required) — what the parent LLM reads to pick this agent.
 - `tools` (optional) — comma-separated list; omit to inherit full tool set.
 - `model` (optional) — omit to inherit the parent's model + thinking level.
+- `tier` (optional) — `cheap|thinking`. Cost-tier routing (see below); ignored
+  when `model` is also set (the pin wins).
 - `thinkingLevel` (optional) — `off|minimal|low|medium|high|xhigh|max`. Per-role
   reasoning effort. Resolution order (most specific wins): the dispatch call's
-  `thinkingLevel` → this frontmatter field → the parent's level (only when the
-  agent also inherits the model) → `medium` default for model-pinned agents.
+  `thinkingLevel` → this frontmatter field → the tier default (tier-routed runs:
+  cheap `medium`, thinking `high`) → the parent's level (only when the agent
+  also inherits the model) → `medium` default for model-pinned agents.
   Without any of these the child `pi` process would silently run at its own
   `max` default.
+
+## Cost tiers (quota-preserving offload)
+
+Non-crucial work can be routed to a cheaper provider model so the primary
+provider's quota (e.g. z.ai's 5-hour window) is spent where it matters:
+
+- **`cheap`** — routine work (recon, lookup, bulk triage). Default model:
+  `minimax/minimax-m2.5`.
+- **`thinking`** — deep reasoning that can still be offloaded. Default model:
+  `minimax/minimax-m3`.
+
+Model resolution (most specific wins): the dispatch call's `model` → its
+`tier` → the agent's `model` → the agent's `tier` → parent inheritance.
+Tier-routed runs get the tier's thinking default and **fall back to the
+parent model once on failure** (quota exhausted, provider error) — offload
+is best-effort, never dispatch-fatal. Explicit `model:` pins never fall back.
+
+Override the tier → model mapping in `~/.pi/agent/pisubagent.tiers.json`:
+
+```json
+{ "cheap": "minimax/minimax-m2.5", "thinking": "minimax/minimax-m3" }
+```
 
 Override precedence (most-specific wins): **project > user > bundled**.
 Project agents live in `.pi/agents/` next to a `pi` trust boundary and

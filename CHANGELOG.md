@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Cost tiers** (`tier: cheap | thinking`) — quota-preserving offload of
+  non-crucial subagent work to a cheaper provider model. Resolution ladder
+  (most specific wins): dispatch `model` → dispatch `tier` → agent frontmatter
+  `model:` → agent frontmatter `tier:` → parent inheritance. Defaults:
+  `cheap` → `minimax/minimax-m2.5`, `thinking` → `minimax/minimax-m3`;
+  overridable via `~/.pi/agent/pisubagent.tiers.json`. Tier-routed runs get a
+  tier-specific thinking default (cheap: `medium`, thinking: `high`) and fall
+  back to the parent model once on failure (`fellBackToParent` on the result;
+  explicit `model:` pins never fall back). Bundled `scout` and `librarian`
+  now ship as `tier: cheap` (was Haiku / Sonnet pins).
+
 ## [0.3.0] - 2026-09-27
 
 Structured-everywhere minor: full JSON-Schema validation, per-item outputSchema
