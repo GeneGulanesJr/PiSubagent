@@ -1,10 +1,15 @@
 import type { AgentToolResult, ThinkingLevel } from '@earendil-works/pi-agent-core';
 import type { Message } from '@earendil-works/pi-ai';
+import type { Tier } from './tier.js';
 
 export interface SubagentParams {
   agent?: string;
   task?: string;
   thinkingLevel?: ThinkingLevel;
+  /** Per-dispatch model override (provider/model id). Beats agent frontmatter. */
+  model?: string;
+  /** Per-dispatch cost tier ('cheap' | 'thinking') — routes to the tier's model. Beats agent frontmatter tier. */
+  tier?: Tier;
   /** Wall-clock budget in ms for the child process (single mode). */
   timeoutMs?: number;
   /** Retry attempts for a failed child run (single mode). 0–3, default 0. */
@@ -26,6 +31,10 @@ export interface SubagentParams {
     task: string;
     cwd?: string;
     thinkingLevel?: ThinkingLevel;
+    /** Per-task model override (provider/model id). Beats agent frontmatter. */
+    model?: string;
+    /** Per-task cost tier ('cheap' | 'thinking'). Beats agent frontmatter tier. */
+    tier?: Tier;
     timeoutMs?: number;
     retries?: number;
     retryBackoffMs?: number;
@@ -40,6 +49,10 @@ export interface SubagentParams {
     task: string;
     cwd?: string;
     thinkingLevel?: ThinkingLevel;
+    /** Per-step model override (provider/model id). Beats agent frontmatter. */
+    model?: string;
+    /** Per-step cost tier ('cheap' | 'thinking'). Beats agent frontmatter tier. */
+    tier?: Tier;
     timeoutMs?: number;
     retries?: number;
     retryBackoffMs?: number;
@@ -75,6 +88,10 @@ export interface SingleResult {
   stderr: string;
   usage: UsageStats;
   model?: string;
+  /** The tier that routed this run, when one did (see src/tier.ts). */
+  tier?: Tier;
+  /** True when a tier-routed run failed and was re-run on the parent model. */
+  fellBackToParent?: boolean;
   /** Effective thinking level the run was launched with (see src/thinking.ts). */
   thinkingLevel?: ThinkingLevel;
   stopReason?: string;
@@ -115,6 +132,10 @@ export interface AgentRunInput {
   parentThinkingLevel?: ThinkingLevel;
   /** Per-dispatch override from the tool call; beats frontmatter and parent. */
   thinkingLevelOverride?: ThinkingLevel;
+  /** Per-dispatch model override (provider/model id); beats agent frontmatter. */
+  modelOverride?: string;
+  /** Per-dispatch cost tier; beats agent frontmatter tier. */
+  tierOverride?: Tier;
   /** Per-dispatch timeout in ms; beats the runner-level runTimeoutMs. */
   timeoutMs?: number;
   /** Opt-in: persist this run's session (runner generates the id). */
@@ -133,6 +154,8 @@ export interface AgentConfig {
   description: string;
   tools?: string[];
   model?: string;
+  /** Per-role cost tier from frontmatter; resolves to a model at dispatch (see src/tier.ts). */
+  tier?: Tier;
   /** Per-role thinking level from frontmatter; beats the dispatch default. */
   thinkingLevel?: ThinkingLevel;
   systemPrompt: string;

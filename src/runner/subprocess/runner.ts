@@ -10,6 +10,7 @@ import type { SingleResult, UsageStats } from '../../types.js';
 import { resolvePiInvocation } from './invocation.js';
 import { writePromptFile } from './prompt-file.js';
 import { resolveThinkingLevel } from '../../thinking.js';
+import { resolveRunModel } from '../../tier.js';
 
 /** Hard cap on stdout line buffer / stderr accumulator per run (1 MB). */
 const MAX_BUFFER_BYTES = 1024 * 1024;
@@ -69,8 +70,13 @@ export class SubprocessRunner implements AgentRunner {
    * --mode json -p [--session S | --session-id I | --no-session] [--model M] ...
    * (run() appends [--append-system-prompt tmp] and the Task: line afterwards.)
    *
+   * Model resolution (most specific wins, see src/tier.ts): per-dispatch
+   * `model` override → per-dispatch `tier` → agent frontmatter `model:` →
+   * agent frontmatter `tier:` → parent inheritance.
+   *
    * Thinking level resolution (most specific wins): per-dispatch override →
-   * agent frontmatter → parent inheritance (only when the agent inherits the
+   * agent frontmatter → tier default (tier-routed runs; cheap: medium,
+   * thinking: high) → parent inheritance (only when the agent inherits the
    * parent's model) → DEFAULT_SUBAGENT_THINKING for model-pinned agents.
    * See src/thinking.ts.
    */
@@ -89,11 +95,16 @@ export class SubprocessRunner implements AgentRunner {
       args.push('--no-session');
     }
     if (input.sessionDir) args.push('--session-dir', input.sessionDir);
-    const model = input.agent.model ?? dispatchDefaults.parentModel;
+    const resolved = resolveRunModel(input.agent, {
+      modelOverride: input.modelOverride,
+      tierOverride: input.tierOverride,
+    });
+    const model = resolved.model ?? dispatchDefaults.parentModel;
     if (model) args.push('--model', model);
     const thinking = resolveThinkingLevel(input.agent, {
       thinkingLevelOverride: input.thinkingLevelOverride,
       parentThinkingLevel: dispatchDefaults.parentThinkingLevel,
+      tier: resolved.tier,
     });
     if (thinking) args.push('--thinking', thinking);
     if (input.agent.tools && input.agent.tools.length > 0) {
@@ -119,6 +130,10 @@ export class SubprocessRunner implements AgentRunner {
     onUpdate?: (partial: SingleResult) => void,
   ): Promise<SingleResult> {
     const sessionId = input.resume ?? input.sessionId ?? (input.session ? randomUUID() : undefined);
+    const resolved = resolveRunModel(input.agent, {
+      modelOverride: input.modelOverride,
+      tierOverride: input.tierOverride,
+    });
     const args = this.buildArgs(
       { ...input, sessionId },
       {
@@ -129,6 +144,7 @@ export class SubprocessRunner implements AgentRunner {
     const thinkingLevel = resolveThinkingLevel(input.agent, {
       thinkingLevelOverride: input.thinkingLevelOverride,
       parentThinkingLevel: input.parentThinkingLevel,
+      tier: resolved.tier,
     });
 
     const result: SingleResult = {
@@ -139,7 +155,8 @@ export class SubprocessRunner implements AgentRunner {
       messages: [],
       stderr: '',
       usage: emptyUsage(),
-      model: input.agent.model ?? input.parentModel,
+      model: resolved.model ?? input.parentModel,
+      tier: resolved.tier,
       thinkingLevel,
       sessionId,
     };

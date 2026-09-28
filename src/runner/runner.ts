@@ -1,5 +1,6 @@
 import type { AgentToolResult, ThinkingLevel } from '@earendil-works/pi-agent-core';
 import type { SingleResult, AgentConfig, SubagentDetails } from '../types.js';
+import type { Tier } from '../tier.js';
 
 export interface AgentRunInput {
   agent: AgentConfig;
@@ -11,6 +12,10 @@ export interface AgentRunInput {
   parentThinkingLevel?: ThinkingLevel;
   /** Per-dispatch override from the tool call; beats frontmatter and parent. */
   thinkingLevelOverride?: ThinkingLevel;
+  /** Per-dispatch model override (provider/model id); beats agent frontmatter. */
+  modelOverride?: string;
+  /** Per-dispatch cost tier ('cheap' | 'thinking'); beats agent frontmatter tier. */
+  tierOverride?: Tier;
   /** Per-dispatch timeout in ms; beats the runner-level runTimeoutMs. */
   timeoutMs?: number;
   /** Opt-in: persist this run's session (runner generates the id). */

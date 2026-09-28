@@ -41,6 +41,8 @@ export async function runChain(
         cwd: step.cwd ?? ctx.cwd,
         resolvedTask,
         thinkingLevelOverride: step.thinkingLevel,
+        modelOverride: step.model,
+        tierOverride: step.tier,
         timeoutMs: step.timeoutMs,
         session: step.session,
         resume: step.resume,

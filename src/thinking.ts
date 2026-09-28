@@ -1,4 +1,5 @@
 import type { ThinkingLevel } from '@earendil-works/pi-agent-core';
+import { TIER_DEFAULT_THINKING, type Tier } from './tier.js';
 
 /**
  * Shared thinking-level resolution for subagent dispatch.
@@ -51,6 +52,8 @@ export interface ThinkingResolutionInput {
   thinkingLevelOverride?: ThinkingLevel;
   /** `ctx.thinkingLevel` from the dispatching session. */
   parentThinkingLevel?: ThinkingLevel;
+  /** Tier the run was routed to (see src/tier.ts); tier-routed runs get a tier-specific default. */
+  tier?: Tier;
 }
 
 /**
@@ -63,6 +66,10 @@ export function resolveThinkingLevel(
 ): ThinkingLevel | undefined {
   if (input.thinkingLevelOverride) return input.thinkingLevelOverride;
   if (agent.thinkingLevel) return agent.thinkingLevel;
+  // Tier-routed runs never inherit the parent's level — they run on a
+  // different provider, so the tier's own default applies (cheap: medium,
+  // thinking: high).
+  if (input.tier) return TIER_DEFAULT_THINKING[input.tier];
   if (!agent.model) return input.parentThinkingLevel;
   return DEFAULT_SUBAGENT_THINKING;
 }

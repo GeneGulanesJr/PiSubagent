@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { CONFIG_DIR_NAME, getAgentDir, parseFrontmatter } from '@earendil-works/pi-coding-agent';
 import type { AgentConfig } from './types.js';
 import { parseThinkingLevel } from './thinking.js';
+import { parseTier } from './tier.js';
 
 export type AgentScope = 'user' | 'project' | 'both';
 
@@ -18,6 +19,7 @@ type AgentFrontmatter = {
   description?: unknown;
   tools?: unknown;
   model?: unknown;
+  tier?: unknown;
   thinkingLevel?: unknown;
 };
 
@@ -74,6 +76,7 @@ export function loadAgentsFromDir(
       description: frontmatter.description,
       tools: parseToolList(frontmatter.tools),
       model: typeof frontmatter.model === 'string' ? frontmatter.model : undefined,
+      tier: parseTier(frontmatter.tier),
       thinkingLevel: parseThinkingLevel(frontmatter.thinkingLevel),
       systemPrompt: body,
       source,

@@ -170,6 +170,9 @@ export default function (pi: ExtensionAPI) {
       "To enable project-local agents in .pi/agents, set agentScope: 'both' (or 'project').",
       'Optional thinkingLevel (off…max) per dispatch or per task scales reasoning effort;',
       'omit for the role default.',
+      "Optional tier ('cheap' | 'thinking') routes the run to an offload model",
+      '(defaults: MiniMax M2.5 / M3 — overridable in ~/.pi/agent/pisubagent.tiers.json)',
+      'to preserve the primary provider quota; tier-routed runs fall back to the parent model once on failure.',
     ].join(' '),
     parameters: SubagentParamsSchema,
 

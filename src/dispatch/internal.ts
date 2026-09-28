@@ -10,6 +10,7 @@ import type {
 import type { DispatchContext } from './types.js';
 import type { AgentRunner, AgentRunInput } from '../runner/runner.js';
 import { isFailedResult } from '../output.js';
+import { resolveRunModel } from '../tier.js';
 
 /**
  * Internal helpers shared by the per-mode runners (`run-single`,
@@ -120,6 +121,12 @@ export interface RetryOptions {
  * at 30s. `opts.retryOn` restricts which failure classes retry —
  * a timed-out result classifies as 'timeout', every other failure as
  * 'error'; aborts are never retried regardless of the filter.
+ *
+ * Tier fallback: when the final result (after retries) is still failed AND
+ * the run was tier-routed to a non-parent model, the run is attempted once
+ * more on the parent model. Offloading is best-effort — a quota-exhausted
+ * or unavailable tier model should degrade to the parent, not fail the
+ * dispatch. Explicit `model:` pins never fall back (the pin is deliberate).
  */
 export async function runWithRetries(
   runner: AgentRunner,
@@ -159,5 +166,54 @@ export async function runWithRetries(
     usage.contextTokens = Math.max(usage.contextTokens, result.usage.contextTokens);
     usage.turns += result.usage.turns;
   }
+
+  // Tier fallback: one extra attempt on the parent model for tier-routed
+  // runs that still failed. The fallback reuses the same session/resume
+  // semantics (pi sessions tolerate a model switch mid-session).
+  if (isFailedResult(result) && !ctx.signal?.aborted) {
+    const resolved = resolveRunModel(input.agent, {
+      modelOverride: input.modelOverride,
+      tierOverride: input.tierOverride,
+    });
+    if (resolved.tier && input.parentModel && resolved.model !== input.parentModel) {
+      const fallbackInput: AgentRunInput = {
+        ...input,
+        modelOverride: input.parentModel,
+        tierOverride: undefined,
+      };
+      const fallback = await runner.run(fallbackInput, ctx.signal, onPartial);
+      usage.input += fallback.usage.input;
+      usage.output += fallback.usage.output;
+      usage.cacheRead += fallback.usage.cacheRead;
+      usage.cacheWrite += fallback.usage.cacheWrite;
+      usage.cost += fallback.usage.cost;
+      usage.contextTokens = Math.max(usage.contextTokens, fallback.usage.contextTokens);
+      usage.turns += fallback.usage.turns;
+      attempt += 1;
+      if (!isFailedResult(fallback)) {
+        fallback.stderr = appendStderrNote(
+          fallback.stderr,
+          `[tier fallback: ${resolved.tier} (${resolved.model}) failed — reran on parent model ${input.parentModel}]`,
+        );
+        return { ...fallback, attempts: attempt, usage, fellBackToParent: true };
+      }
+      // Fallback also failed — return it (fresher stderr, parent-model
+      // context) with the fallback marker so the caller can see the route.
+      return {
+        ...fallback,
+        attempts: attempt,
+        usage,
+        fellBackToParent: true,
+        errorMessage:
+          fallback.errorMessage || result.errorMessage || fallback.stderr || result.stderr,
+      };
+    }
+  }
+
   return attempt > 1 ? { ...result, attempts: attempt, usage } : result;
+}
+
+/** Append a stderr note, respecting no impl-level cap here (runner caps its own). */
+function appendStderrNote(stderr: string, note: string): string {
+  return stderr ? `${stderr}\n${note}\n` : `${note}\n`;
 }
