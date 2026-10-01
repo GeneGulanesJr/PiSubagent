@@ -35,8 +35,8 @@
     "format:check": "prettier --check .",
     "verify": "npm run typecheck && npm run lint && npm test",
     "mutate": "stryker run",
-    "clean": "rm -rf dist coverage .vitest-cache reports",
-    "prepare": "node -e \"try { require('husky').install() } catch {}\""
+    "clean": "node -e \"for (const p of ['dist', 'coverage', '.vitest-cache', 'reports']) require('fs').rmSync(p, { recursive: true, force: true })\"",
+    "prepare": "node -e \"import('husky').then(m => m.default()).catch(() => {})\""
   },
   "peerDependencies": {
     "@earendil-works/pi-agent-core": "^0.87.1",
