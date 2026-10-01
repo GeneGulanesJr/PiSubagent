@@ -19,6 +19,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   back to the parent model once on failure (`fellBackToParent` on the result;
   explicit `model:` pins never fall back). Bundled `scout` and `librarian`
   now ship as `tier: cheap` (was Haiku / Sonnet pins).
+- **`subagent_save` tool** — the parent LLM can persist or update agent
+  definitions programmatically (`~/.pi/agent/agents/<name>.md` or the
+  project's nearest `.pi/agents/`). Upsert policy: missing agent → created;
+  minor changes (description tweaks, prompt edits ≤ 20% of lines) → updated
+  automatically; major changes (tools/model/tier/thinkingLevel changed, or a
+  large prompt rewrite) → blocked with a diff summary until the caller passes
+  `overwrite: true`. Shadowing a bundled name requires the same one-time
+  `overwrite`. Serialization double-quotes every frontmatter scalar (defeats
+  YAML scalar re-typing), verifies the written file round-trips through
+  `parseFrontmatter` (restore-not-delete on failure), and preserves unknown
+  frontmatter keys on updates. Project-scope writes require a trusted project
+  and always target the nearest existing `.pi/agents` (see ADR-0004).
+- **Bundled-shadow sync** (`src/agent-sync.ts`) — user copies of bundled
+  agents created via `subagent_save` carry provenance (a base snapshot in
+  `~/.pi/agent/pisubagent/bases/`). When a package update changes a bundled
+  `.md`: untouched copies fast-forward; minor user edits (≤ 20% of lines, no
+  settings changes) rebase onto the update via a clean 3-way merge; major
+  edits or conflicts are never auto-touched and surface as
+  `[agent-sync] …` advisories on dispatch results (TUI + LLM). Hand-written
+  shadows have no provenance and are never auto-touched.
+- **Agent name policy** — `subagent_save` names are kebab-case
+  (`^[a-z]([a-z0-9-]{0,62}[a-z0-9])?$`, max 64) since they become filenames;
+  setting both `model` and `tier` warns (the pin wins, the tier is dead).
+- `/pisubagent-doctor` gains checks for bundled-shadow sync state (stale
+  shadows, orphaned base snapshots, skipped agent files) and now covers both
+  registered tools.
+
+### Fixed
+
+- **`prepare` script was a silent no-op on every platform** (PR #4 follow-up):
+  husky 9 is ESM-only, so `require('husky').install()` threw
+  (`install` is `undefined` — the ESM namespace only exposes `default`) and
+  the `catch {}` swallowed it, meaning git hooks never installed anywhere.
+  Now uses `import('husky').then(m => m.default())` with the same
+  never-fail-install guard. Also made the `clean` script cross-platform
+  (`rm -rf` → `node -e fs.rmSync`) while touching the same concern.
+- **Bundled agents never loaded.** `resolveBundledAgentsDir` walked
+  `../../agents` from `src/` — one level past the package root — so bundled
+  definitions silently never loaded in any layout (repo checkout, pi git
+  install); every dispatch ran on the empty fallback config (no system
+  prompt, no tools/model/tier frontmatter). Now resolves `../agents`
+  (pinned by a regression test against the repo's real `agents/` dir).
+- **One malformed agent `.md` bricked all dispatches.** `loadAgentsFromDir`
+  called `parseFrontmatter` (a real YAML parser that throws) without a
+  guard, so a single invalid-YAML file in any agent directory made every
+  `subagent` call fail. Malformed files are now skipped like other
+  unreadable entries; both tools' discovery is additionally wrapped so a
+  failure surfaces as an explicit error result naming the problem, never a
+  raw throw.
 
 ## [0.3.0] - 2026-09-27
 

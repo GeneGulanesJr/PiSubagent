@@ -4,7 +4,7 @@ description: Self-diagnostic — verify Node version, tests, agents, audit, sett
 
 # /pisubagent-doctor
 
-When to use: Run this when PiSubagent feels broken, slow, or misconfigured — tests fail, agents don't appear, or the `subagent` tool errors. It runs seven read-only checks and reports what to fix.
+When to use: Run this when PiSubagent feels broken, slow, or misconfigured — tests fail, agents don't appear, or the `subagent` tool errors. It runs eight read-only checks and reports what to fix.
 
 You are running diagnostics. **Do NOT modify any files.** Read-only inspection only. If a command fails, capture the error and keep going — the report stays informative even when individual checks fail.
 
@@ -16,11 +16,12 @@ You are running diagnostics. **Do NOT modify any files.** Read-only inspection o
    - `~/.pi/agent/agents/` (user-level)
    - `.pi/agents/` (project-level, relative to repo root)
    - `agents/` at the repo root (bundled)
-   Report which agents exist in each scope and flag duplicates (same `name` in multiple scopes).
+   Report which agents exist in each scope, flag duplicates (same `name` in multiple scopes), and flag any `.md` file whose frontmatter fails to parse (it is silently skipped by discovery).
 4. **Security audit** — Run `npm audit --json`. Sum vulnerabilities by severity (low / moderate / high / critical). Pass if `high + critical == 0`.
 5. **Settings registration** — Read `~/.pi/agent/settings.json`. Confirm `packages` array contains `"git:github.com/GeneGulanesJr/PiSubagent"`. If missing, show the user how to add it (`pi` adds it on first install; reinstall via `pi install git:github.com/GeneGulanesJr/PiSubagent`).
 6. **Subagent smoke test** — Call `subagent(agent: "scout", task: "echo doctor ok", agentScope: "user")`. Pass if it returns successfully (the literal string or a successful completion).
-7. **Dispatch schema surface** — Read `src/index.ts` in the repo root. Confirm the TypeBox definitions (`SubagentParamsSchema`, `TaskItem`, `ChainItem`) expose these fields: `timeoutMs`, `retries`, `retryBackoffMs`, `retryOn`, `outputSchema`, `session`, `resume`, `sessionDir`. Then verify the validation dependency imports: run `node -e "import('ajv').then(() => console.log('ajv ok')).catch(() => process.exit(1))"` from the repo root — pass if it prints `ajv ok`. Fail if any field is missing or the import fails.
+7. **Dispatch schema surface** — Read `src/index.ts` in the repo root. Confirm BOTH tools are registered (`subagent`, `subagent_save`), and that the TypeBox definitions (`SubagentParamsSchema`, `SaveAgentParamsSchema`, `TaskItem`, `ChainItem`) expose these fields: `timeoutMs`, `retries`, `retryBackoffMs`, `retryOn`, `outputSchema`, `session`, `resume`, `sessionDir`; `SaveAgentParamsSchema` additionally exposes `name`, `description`, `systemPrompt`, `tools`, `model`, `tier`, `thinkingLevel`, `scope`, `overwrite`. Then verify the validation dependency imports: run `node -e "import('ajv').then(() => console.log('ajv ok')).catch(() => process.exit(1))"` from the repo root — pass if it prints `ajv ok`. Fail if any field is missing or the import fails.
+8. **Agent store & bundled-shadow sync** — Read `~/.pi/agent/pisubagent/bases/` (base snapshots recorded by `subagent_save`) and `~/.pi/agent/agents/`. For each base snapshot: flag it as an **orphan** if no same-named `.md` exists in the user agents dir; flag it as **stale** if the user copy's frontmatter/body differs majorly from the current bundled `agents/<name>.md` in the package (sync will not auto-touch major edits — the human should reconcile by hand). Also report user agents that shadow a bundled agent but have **no** base snapshot (hand-written shadows are never auto-synced — informational only).
 
 ## Output format
 

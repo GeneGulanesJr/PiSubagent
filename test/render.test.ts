@@ -211,6 +211,24 @@ describe('renderResult', () => {
     );
     expect(r).toBe('nothing ran');
   });
+
+  it('agentSyncNotes render for humans alongside results (not content-only)', () => {
+    const d = details('single', [makeResult()]);
+    d.agentSyncNotes = ['[agent-sync] scout (rebased): your edits were preserved'];
+    const r = renderResult(
+      { content: [{ type: 'text', text: 'done' }], details: d },
+      { expanded: false },
+      theme as never,
+    );
+    expect(r).toContain('[agent-sync] scout (rebased)');
+
+    const noNotes = renderResult(
+      { content: [{ type: 'text', text: 'done' }], details: details('single', [makeResult()]) },
+      { expanded: false },
+      theme as never,
+    );
+    expect(noNotes).not.toContain('[agent-sync]');
+  });
 });
 
 describe('result badges', () => {

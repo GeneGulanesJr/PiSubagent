@@ -1,8 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { fileURLToPath } from 'node:url';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import { parseToolList, loadAgentsFromDir, findNearestProjectAgentsDir } from '../src/agents.js';
+import {
+  parseToolList,
+  loadAgentsFromDir,
+  findNearestProjectAgentsDir,
+  resolveBundledAgentsDir,
+} from '../src/agents.js';
 import {
   parseThinkingLevel,
   resolveThinkingLevel,
@@ -117,6 +123,18 @@ describe('loadAgentsFromDir', () => {
     expect(loadAgentsFromDir(tmpDir, 'user')).toEqual([]);
   });
 
+  it('skips files with malformed YAML without losing sibling agents', () => {
+    // 'description: "unterminated' is invalid YAML — parseFrontmatter throws.
+    fs.writeFileSync(
+      path.join(tmpDir, 'broken-yaml.md'),
+      '---\nname: broken\ndescription: "unterminated\n---\nbody',
+    );
+    fs.writeFileSync(path.join(tmpDir, 'good.md'), '---\nname: good\ndescription: fine\n---\nbody');
+    const agents = loadAgentsFromDir(tmpDir, 'user');
+    expect(agents).toHaveLength(1);
+    expect(agents[0].name).toBe('good');
+  });
+
   it('skips non-md files', () => {
     fs.writeFileSync(path.join(tmpDir, 'skip.txt'), 'ignored');
     expect(loadAgentsFromDir(tmpDir, 'user')).toEqual([]);
@@ -135,5 +153,19 @@ describe('findNearestProjectAgentsDir', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pisubagent-noproj-'));
     expect(findNearestProjectAgentsDir(tmp)).toBeNull();
     fs.rmSync(tmp, { recursive: true, force: true });
+  });
+});
+
+describe('resolveBundledAgentsDir', () => {
+  it('resolves to the package root agents/ dir (one level above src/)', () => {
+    // This test file lives at <repo>/test, the module under test at
+    // <repo>/src — so the repo's real agents/ dir pins the correct layout.
+    const repoAgentsDir = path.resolve(
+      path.dirname(fileURLToPath(import.meta.url)),
+      '..',
+      'agents',
+    );
+    expect(resolveBundledAgentsDir(import.meta.url)).toBe(repoAgentsDir);
+    expect(fs.existsSync(path.join(repoAgentsDir, 'scout.md'))).toBe(true);
   });
 });

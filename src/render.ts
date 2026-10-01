@@ -68,15 +68,23 @@ export function renderResult(
   const details = result.details;
   const results = details.results;
 
+  let text: string;
   if (results.length === 0) {
-    return result.content[0]?.text ?? '(no output)';
+    text = result.content[0]?.text ?? '(no output)';
+  } else if (details.mode === 'single' && results.length === 1) {
+    text = renderSingleResult(results[0], opts.expanded === true, theme);
+  } else {
+    text = renderMultiResult(details.mode, results, theme, opts.isPartial === true);
   }
 
-  if (details.mode === 'single' && results.length === 1) {
-    return renderSingleResult(results[0], opts.expanded === true, theme);
+  // Bundled-shadow sync outcomes (see src/agent-sync.ts). These ride on
+  // details because renderResult draws from details, not content — without
+  // this the parent LLM would see sync notes the human never would.
+  const notes = details.agentSyncNotes ?? [];
+  if (notes.length > 0) {
+    text += `\n${notes.map((n) => theme.fg('muted', n)).join('\n')}`;
   }
-
-  return renderMultiResult(details.mode, results, theme, opts.isPartial === true);
+  return text;
 }
 
 const RUNNING_ICON = '◐';

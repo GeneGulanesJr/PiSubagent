@@ -2,17 +2,28 @@ import { fileURLToPath } from 'node:url';
 import * as path from 'node:path';
 import { Type, type Static } from '@sinclair/typebox';
 import { Text } from '@earendil-works/pi-tui';
-import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
-import type { SubagentParams, SubagentDetails } from './types.js';
-import { resolveBundledAgentsDir, discoverAgents, type AgentScope } from './agents.js';
+import { CONFIG_DIR_NAME, getAgentDir, type ExtensionAPI } from '@earendil-works/pi-coding-agent';
+import type { SubagentParams, SubagentDetails, SaveDetails } from './types.js';
+import {
+  resolveBundledAgentsDir,
+  discoverAgents,
+  findNearestProjectAgentsDir,
+  getUserAgentsDir,
+  type AgentScope,
+  type AgentDiscoveryResult,
+} from './agents.js';
+import { saveAgentDefinition } from './agent-store.js';
+import { syncBundledShadows, type SyncReport } from './agent-sync.js';
 import { execute, type DispatchContext, type ToolResultLike } from './dispatch/index.js';
 import { renderCall, renderResult } from './render.js';
 
 const THINKING_LEVEL_DESCRIPTION =
   "Reasoning effort for this dispatch. Overrides the agent's frontmatter thinkingLevel and the default (medium for model-pinned agents; parent's level when the agent inherits the model).";
 
+const THINKING_LEVEL_VALUES = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
+
 const ThinkingLevelSchema = Type.Union(
-  ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].map((l) => Type.Literal(l)),
+  THINKING_LEVEL_VALUES.map((l) => Type.Literal(l)),
   { description: THINKING_LEVEL_DESCRIPTION },
 );
 
@@ -154,12 +165,139 @@ const SubagentParamsSchema = Type.Object({
   ),
 });
 
+const SaveAgentParamsSchema = Type.Object({
+  name: Type.String({
+    description:
+      'Agent name — kebab-case (lowercase letters, digits, hyphens; starts and ends with a letter/digit; max 64). The definition is written to <name>.md.',
+    pattern: '^[a-z](?:[a-z0-9-]{0,62}[a-z0-9])?$',
+  }),
+  description: Type.String({
+    description: 'One-line description of what the agent is for (required by the loader).',
+    minLength: 1,
+  }),
+  systemPrompt: Type.String({
+    description: 'Full system prompt for the child agent (becomes the body of the .md file).',
+    minLength: 1,
+  }),
+  tools: Type.Optional(
+    Type.String({
+      description:
+        "Comma-separated tools the child may use, e.g. 'read, grep, bash'. Omit to inherit the default tool set.",
+    }),
+  ),
+  model: Type.Optional(
+    Type.String({
+      description:
+        'Provider/model id pin (e.g. minimax/minimax-m2.5). Wins over tier at dispatch — set one, not both.',
+    }),
+  ),
+  tier: Type.Optional(
+    Type.Union([Type.Literal('cheap'), Type.Literal('thinking')], {
+      description:
+        "Cost tier: 'cheap' (routine offload) or 'thinking' (deep-reasoning offload). Ignored when model is also set.",
+    }),
+  ),
+  thinkingLevel: Type.Optional(ThinkingLevelSchema),
+  scope: Type.Optional(
+    Type.Union([Type.Literal('user'), Type.Literal('project')], {
+      description:
+        "Where to write: 'user' (~/.pi/agent/agents — available in every project; default) or 'project' (the project's nearest .pi/agents — shared via the repo; requires a trusted project).",
+      default: 'user',
+    }),
+  ),
+  overwrite: Type.Optional(
+    Type.Boolean({
+      description:
+        'Required ONLY to shadow a bundled agent name or apply a MAJOR update (tools/model/tier/thinkingLevel changed, or a large prompt rewrite). Minor updates never need this. Set it only when the user agreed to replace that agent.',
+      default: false,
+    }),
+  ),
+});
+
 /** Resolved at module load: package root's agents/ dir (src/ → ../../agents). */
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const BUNDLED_DIR = resolveBundledAgentsDir(import.meta.url);
 void HERE; // retained for future path-relative needs
 
-export default function (pi: ExtensionAPI) {
+/**
+ * Injection seams for tests (and embedding apps). All defaults resolve from
+ * getAgentDir() at CALL time so the PI_CODING_AGENT_DIR env override is
+ * honored whenever the extension actually runs.
+ */
+export interface SubagentExtensionDeps {
+  /** Bundled-shadow sync implementation (defaults to src/agent-sync.ts). */
+  syncBundledShadows?: (opts: {
+    bundledDir: string;
+    userDir: string;
+    basesDir: string;
+  }) => Promise<SyncReport[]> | SyncReport[];
+  dirs?: {
+    /** Default: getUserAgentsDir() (~/.pi/agent/agents). */
+    userAgentsDir?: string;
+    /** Default: ~/.pi/agent/pisubagent/bases. */
+    basesDir?: string;
+  };
+}
+
+/** True when `filePath` lives at or under `dir`. */
+function isInsideDir(filePath: string, dir: string): boolean {
+  const rel = path.relative(dir, filePath);
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+}
+
+function formatSyncNotes(reports: SyncReport[]): string[] {
+  return reports.map((r) => `[agent-sync] ${r.agent} (${r.action}): ${r.detail}`);
+}
+
+/**
+ * Run bundled-shadow sync with full degradation: per-agent failures are
+ * already isolated inside syncBundledShadows; a whole-function failure
+ * degrades to a skipped-sync note. Sync must never fail a dispatch.
+ */
+async function runAgentSync(deps: SubagentExtensionDeps, userDir: string, basesDir: string) {
+  try {
+    return await (deps.syncBundledShadows ?? syncBundledShadows)({
+      bundledDir: BUNDLED_DIR,
+      userDir,
+      basesDir,
+    });
+  } catch {
+    return [
+      {
+        agent: '*',
+        action: 'skipped' as const,
+        detail: 'bundled-shadow sync failed and was skipped',
+      },
+    ];
+  }
+}
+
+/** Defensive discovery wrapper: never let a bad directory crash a tool. */
+function safeDiscoverAgents(
+  cwd: string,
+  scope: AgentScope,
+): AgentDiscoveryResult | { error: Error } {
+  try {
+    return discoverAgents(cwd, scope, BUNDLED_DIR);
+  } catch (err) {
+    return { error: err instanceof Error ? err : new Error(String(err)) };
+  }
+}
+
+function discoveryErrorMessage(err: Error): string {
+  return (
+    `Agent discovery failed: ${err.message}. One of the agent directories ` +
+    '(~/.pi/agent/agents, .pi/agents, or the bundled agents/) contains a file that could not be read or parsed. ' +
+    'Fix or remove the offending .md file and retry.'
+  );
+}
+
+export default function (pi: ExtensionAPI, deps: SubagentExtensionDeps = {}) {
+  const dirs = {
+    userAgentsDir: deps.dirs?.userAgentsDir ?? getUserAgentsDir(),
+    basesDir: deps.dirs?.basesDir ?? path.join(getAgentDir(), 'pisubagent', 'bases'),
+  };
+
   pi.registerTool({
     name: 'subagent',
     label: 'Subagent',
@@ -179,7 +317,29 @@ export default function (pi: ExtensionAPI) {
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
       const p = params as Static<typeof SubagentParamsSchema>;
       const scope: AgentScope = p.agentScope ?? 'user';
-      const discovery = discoverAgents(ctx.cwd, scope, BUNDLED_DIR);
+
+      // Bundled-shadow sync before discovery (skipped for project scope,
+      // where bundled/user agents are not loaded at all).
+      let syncNotes: string[] = [];
+      if (scope !== 'project') {
+        syncNotes = formatSyncNotes(await runAgentSync(deps, dirs.userAgentsDir, dirs.basesDir));
+      }
+
+      const discovered = safeDiscoverAgents(ctx.cwd, scope);
+      if ('error' in discovered) {
+        return {
+          content: [{ type: 'text', text: discoveryErrorMessage(discovered.error) }],
+          details: {
+            mode: 'single',
+            agentScope: scope,
+            projectAgentsDir: null,
+            results: [],
+            agentSyncNotes: syncNotes.length > 0 ? syncNotes : undefined,
+          },
+          isError: true,
+        } satisfies ToolResultLike & { details: SubagentDetails };
+      }
+      const discovery = discovered;
 
       const dispatchCtx: DispatchContext = {
         cwd: ctx.cwd,
@@ -200,10 +360,14 @@ export default function (pi: ExtensionAPI) {
       const withProjectDir = (details: SubagentDetails): SubagentDetails => ({
         ...details,
         projectAgentsDir: discovery.projectAgentsDir,
+        agentSyncNotes: syncNotes.length > 0 ? syncNotes : details.agentSyncNotes,
       });
 
       return {
-        content: out.content,
+        content:
+          syncNotes.length > 0
+            ? [...out.content, { type: 'text' as const, text: syncNotes.join('\n') }]
+            : out.content,
         details: withProjectDir(out.details),
         isError: out.isError,
       };
@@ -224,6 +388,97 @@ export default function (pi: ExtensionAPI) {
         theme as never,
       );
       return new Text(s, 0, 0);
+    },
+  });
+
+  pi.registerTool({
+    name: 'subagent_save',
+    label: 'Subagent Save',
+    description: [
+      'Persist or update a subagent definition (Markdown + frontmatter) so future subagent dispatches can use it by name.',
+      "Writes to ~/.pi/agent/agents (scope 'user', default) or the project's nearest .pi/agents (scope 'project'; requires a trusted project).",
+      'Upsert policy: a missing agent is created; MINOR changes (description tweaks, small prompt edits — up to 20% of prompt lines) are updated automatically;',
+      'MAJOR changes (tools/model/tier/thinkingLevel changed, or a large prompt rewrite) are BLOCKED with a diff summary.',
+      "A 'blocked' result is expected behavior, NOT a transient failure: do not retry with overwrite: true unless the user explicitly agreed to replace that agent — pick a different name or ask.",
+      'Saving a name that exists as a bundled agent also requires overwrite: true (it shadows the bundled definition).',
+    ].join(' '),
+    parameters: SaveAgentParamsSchema,
+
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const p = params as Static<typeof SaveAgentParamsSchema>;
+      const scope = p.scope ?? 'user';
+
+      // Refresh provenance state before diffing against what's on disk.
+      let syncNotes: string[] = [];
+      if (scope !== 'project') {
+        syncNotes = formatSyncNotes(await runAgentSync(deps, dirs.userAgentsDir, dirs.basesDir));
+      }
+
+      const buildResult = (
+        details: SaveDetails,
+        text: string,
+        isError: boolean,
+      ): {
+        content: Array<{ type: 'text'; text: string }>;
+        details: SaveDetails;
+        isError: boolean;
+      } => ({
+        content:
+          syncNotes.length > 0
+            ? [
+                { type: 'text' as const, text },
+                { type: 'text' as const, text: syncNotes.join('\n') },
+              ]
+            : [{ type: 'text' as const, text }],
+        details,
+        isError,
+      });
+
+      // Project scope: write-block on untrusted projects (stronger than the
+      // run gate, which only confirms before EXECUTING untrusted agents —
+      // see docs/adr/0004).
+      if (scope === 'project' && !ctx.isProjectTrusted()) {
+        return buildResult(
+          { action: 'blocked' },
+          "NOT saved: scope 'project' requires a trusted project. Trust this project in pi's project settings, or save to user scope (scope: 'user') instead.",
+          true,
+        );
+      }
+
+      const targetDir =
+        scope === 'project'
+          ? (findNearestProjectAgentsDir(ctx.cwd) ?? path.join(ctx.cwd, CONFIG_DIR_NAME, 'agents'))
+          : dirs.userAgentsDir;
+
+      const discovered = safeDiscoverAgents(ctx.cwd, 'both');
+      if ('error' in discovered) {
+        return buildResult({ action: 'error' }, discoveryErrorMessage(discovered.error), true);
+      }
+
+      const otherSources = discovered.agents.filter((a) => !isInsideDir(a.filePath, targetDir));
+
+      const outcome = await saveAgentDefinition(
+        {
+          name: p.name,
+          description: p.description,
+          systemPrompt: p.systemPrompt,
+          tools: p.tools,
+          model: p.model,
+          tier: p.tier,
+          thinkingLevel: p.thinkingLevel,
+          overwrite: p.overwrite,
+        },
+        { targetDir, sourceLabel: scope, otherSources, basesDir: dirs.basesDir },
+      );
+
+      const details: SaveDetails = {
+        action: outcome.action,
+        filePath: outcome.filePath,
+        changedFields: outcome.change?.fields,
+        warnings: outcome.warnings.length > 0 ? outcome.warnings : undefined,
+      };
+      const text = [outcome.message, ...outcome.warnings].join('\n');
+      return buildResult(details, text, !outcome.ok);
     },
   });
 }

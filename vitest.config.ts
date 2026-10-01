@@ -19,7 +19,15 @@ export default defineConfig({
     clearMocks: false,
     coverage: {
       provider: 'v8',
-      include: ['src/runner/**/*.ts', 'src/agents.ts', 'src/security.ts', 'src/output.ts'],
+      include: [
+        'src/runner/**/*.ts',
+        'src/agents.ts',
+        'src/security.ts',
+        'src/output.ts',
+        'src/text-diff.ts',
+        'src/agent-store.ts',
+        'src/agent-sync.ts',
+      ],
       thresholds: { lines: 80, functions: 80, statements: 80, branches: 70 },
     },
   },

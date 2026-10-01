@@ -66,7 +66,16 @@ export function loadAgentsFromDir(
       continue;
     }
 
-    const { frontmatter, body } = parseFrontmatter<AgentFrontmatter>(content);
+    // parseFrontmatter runs a real YAML parser that THROWS on invalid YAML.
+    // Skip the file like other unreadable entries — one malformed .md must
+    // never take down discovery for every agent in every scope.
+    let parsed: { frontmatter: AgentFrontmatter; body: string };
+    try {
+      parsed = parseFrontmatter<AgentFrontmatter>(content);
+    } catch {
+      continue;
+    }
+    const { frontmatter, body } = parsed;
     if (typeof frontmatter.name !== 'string' || typeof frontmatter.description !== 'string') {
       continue;
     }
@@ -100,12 +109,26 @@ export function findNearestProjectAgentsDir(cwd: string): string | null {
 }
 
 /**
+ * The user-level agents directory (~/.pi/agent/agents, honoring
+ * PI_CODING_AGENT_DIR). Resolved at call time, never at module load, so
+ * tests and embedding apps can set the env override before first use.
+ */
+export function getUserAgentsDir(): string {
+  return path.join(getAgentDir(), 'agents');
+}
+
+/**
  * Resolve the package's bundled agents/ directory from this module's location.
- * src/agents.ts → ../../agents (package root's agents/).
+ *
+ * This module lives at <packageRoot>/src/agents.ts in every supported layout
+ * (repo checkout, pi git install, node_modules), so the bundled agents/ dir
+ * is exactly one level up. The previous '../../agents' walked one level too
+ * far and resolved to a nonexistent sibling directory — bundled agents
+ * silently never loaded (discovery degraded to the empty stub config).
  */
 export function resolveBundledAgentsDir(importMetaUrl: string): string {
   const here = path.dirname(fileURLToPath(importMetaUrl));
-  return path.resolve(here, '../../agents');
+  return path.resolve(here, '../agents');
 }
 
 /**
@@ -130,7 +153,7 @@ export function discoverAgents(
   scope: AgentScope,
   bundledDir: string,
 ): AgentDiscoveryResult {
-  const userDir = path.join(getAgentDir(), 'agents');
+  const userDir = getUserAgentsDir();
   const projectAgentsDir = findNearestProjectAgentsDir(cwd);
 
   // Scope → load-source matrix. The TypeBox schema in src/index.ts already

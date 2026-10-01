@@ -20,7 +20,7 @@ describe('/pisubagent-doctor prompt', () => {
     expect(lineCount).toBeLessThan(150);
   });
 
-  describe('mentions all 6 diagnostic checks', () => {
+  describe('mentions all 8 diagnostic checks', () => {
     it('mentions Node version check', () => {
       // Catches "Node version" (check name) and tolerates either "node -v"
       // or "node --version" style phrasing within a few characters.
@@ -45,6 +45,17 @@ describe('/pisubagent-doctor prompt', () => {
 
     it('mentions a smoke test', () => {
       expect(promptText.toLowerCase()).toMatch(/smoke/);
+    });
+
+    it('mentions the dispatch schema surface for both tools', () => {
+      expect(promptText).toContain('SubagentParamsSchema');
+      expect(promptText).toContain('SaveAgentParamsSchema');
+      expect(promptText).toContain('subagent_save');
+    });
+
+    it('mentions agent-store sync state (bases, orphans, shadows)', () => {
+      expect(promptText).toContain('pisubagent/bases');
+      expect(promptText.toLowerCase()).toContain('orphan');
     });
   });
 
