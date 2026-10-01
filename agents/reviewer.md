@@ -2,7 +2,7 @@
 name: reviewer
 description: Code review specialist for quality and security analysis
 tools: read, grep, find, ls, bash
-model: claude-sonnet-4-5
+model: zai/glm-5.3-flash
 thinkingLevel: high
 ---
 
