@@ -71,9 +71,9 @@ Use `chain` for scout → plan → worker flows (bundled `/implement`,
 `parallel` for independent recon across a codebase or fan-out reviews. Use
 `single` for exactly one job.
 
-The bundled `/pisubagent-doctor` slash command (added in v0.1.2) runs
-6 read-only diagnostics (Node version, tests, agents discovered, audit,
-settings registration, smoke test) and reports a structured remediation
+The bundled `/pisubagent-doctor` slash command runs read-only diagnostics
+(Node version, tests, agents discovered, audit, settings registration, smoke
+test, schema surface, agent-store sync) and reports a structured remediation
 plan. Reach for it before opening an issue.
 
 ## Limits
@@ -102,7 +102,62 @@ plan. Reach for it before opening an issue.
 - `aws-architect` (Sonnet) — AWS Well-Architected review of IaC
 - `worker` (Sonnet) — general implementation
 
-Override by dropping a same-named `*.md` in `~/.pi/agent/agents/`.
+Override by dropping a same-named `*.md` in `~/.pi/agent/agents/` (or save
+one with the `subagent_save` tool — see below; the tool path asks for a
+one-time `overwrite: true` before shadowing a bundled name).
+
+## Saving agents from a session (`subagent_save`)
+
+The parent LLM can persist a custom agent mid-session with the
+`subagent_save` tool — no hand-editing files required:
+
+```
+subagent_save({
+  name: "css-refiner",
+  description: "Polishes CSS/layout changes after feature work",
+  systemPrompt: "You are a CSS specialist. ...",
+  tools: "read, grep, bash",
+  tier: "cheap"
+})
+```
+
+Definitions are written to `~/.pi/agent/agents/<name>.md` (scope `user`,
+default) or the project's nearest `.pi/agents/` (scope `project`; requires a
+trusted project). The upsert policy:
+
+- **Missing agent** → created.
+- **Minor changes** (description tweaks, small prompt edits — up to 20% of
+  prompt lines) → updated automatically.
+- **Major changes** (`tools`/`model`/`tier`/`thinkingLevel` changed, or a
+  large prompt rewrite) → **blocked** with a diff summary. The caller must
+  pass `overwrite: true` — set only when the user actually wants to replace
+  the agent — or save under a different name.
+- **Shadowing a bundled name** (e.g. saving your own `scout`) → blocked once;
+  `overwrite: true` records it as an intentional override.
+
+Notes: names are kebab-case (`[a-z0-9-]`) because they become filenames —
+pre-existing agents with uppercase/underscore names can't be edited by the
+tool. Setting both `model` and `tier` warns (the model pin wins and the tier
+is ignored at dispatch). Minor updates preserve unknown frontmatter keys
+(`tags:`, `author:`, …) already present in the file.
+
+## Bundled updates & shadow sync
+
+If you override a bundled agent, a package update that changes the bundled
+`.md` would normally leave your copy silently stale forever. PiSubagent
+tracks provenance for tool-saved shadows (a base snapshot in
+`~/.pi/agent/pisubagent/bases/`) and syncs them on the next dispatch:
+
+- Your copy **unchanged** since the recorded base → fast-forwarded to the new
+  bundled version.
+- Your copy has **minor edits** (≤ 20% of lines, no settings changes) and
+  they don't collide with the bundled changes → your edits are **rebased**
+  onto the update automatically.
+- **Major edits or conflicts** → never touched; you get an
+  `[agent-sync] …` advisory on the dispatch result and in the TUI.
+
+Hand-written shadows (no provenance snapshot) are never auto-touched;
+`/pisubagent-doctor` lists them.
 
 ## Custom agents
 
@@ -166,16 +221,21 @@ when the project is untrusted. See `agents/` for full examples and
 
 ## Troubleshooting
 
-| Message                                                  | Meaning                                                                                                                                                                                           |
-| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Invalid parameters. Provide exactly one mode: …`        | Call had zero or more than one of `{agent, task}`, `{tasks}`, `{chain}`.                                                                                                                          |
-| `Canceled: project-local agents not approved.`           | User denied the prompt, or `hasUI === false` on an untrusted project. Pass `confirmProjectAgents: false` to skip when intentional.                                                                |
-| `Too many parallel tasks (N). Max is 8.`                 | `tasks.length > MAX_PARALLEL_TASKS`. Split into smaller batches.                                                                                                                                  |
-| `[Output truncated: N bytes omitted. …]`                 | A task's parent-facing summary exceeded `PER_TASK_OUTPUT_CAP`. Full output is preserved in `details.results[i].messages`.                                                                         |
-| `[subprocess: N malformed JSONL lines dropped]`          | The child `pi` process emitted lines that weren't valid JSONL events. Inspect the agent's prompt — usually stray print output.                                                                    |
-| `run timeout after Xms`                                  | The per-dispatch `timeoutMs` (or test-only `runTimeoutMs`) was exceeded; the child was killed and the result marked `timedOut` with `stopReason: "timeout"`. Raise the limit or shorten the task. |
-| `[truncated: stdout exceeded 1MB — full output: <path>]` | The child's stdout crossed the 1 MB in-memory cap; the full output was spilled to `<path>` (also on `results[i].outputFile`).                                                                     |
-| `structured output: …` (in `results[i].structuredError`) | The reply failed the `outputSchema` contract (parse or validation). The dispatch still succeeded — re-dispatch or inspect `results[i].messages`.                                                  |
+| Message                                                   | Meaning                                                                                                                                                                                           |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Invalid parameters. Provide exactly one mode: …`         | Call had zero or more than one of `{agent, task}`, `{tasks}`, `{chain}`.                                                                                                                          |
+| `Canceled: project-local agents not approved.`            | User denied the prompt, or `hasUI === false` on an untrusted project. Pass `confirmProjectAgents: false` to skip when intentional.                                                                |
+| `Too many parallel tasks (N). Max is 8.`                  | `tasks.length > MAX_PARALLEL_TASKS`. Split into smaller batches.                                                                                                                                  |
+| `[Output truncated: N bytes omitted. …]`                  | A task's parent-facing summary exceeded `PER_TASK_OUTPUT_CAP`. Full output is preserved in `details.results[i].messages`.                                                                         |
+| `[subprocess: N malformed JSONL lines dropped]`           | The child `pi` process emitted lines that weren't valid JSONL events. Inspect the agent's prompt — usually stray print output.                                                                    |
+| `run timeout after Xms`                                   | The per-dispatch `timeoutMs` (or test-only `runTimeoutMs`) was exceeded; the child was killed and the result marked `timedOut` with `stopReason: "timeout"`. Raise the limit or shorten the task. |
+| `[truncated: stdout exceeded 1MB — full output: <path>]`  | The child's stdout crossed the 1 MB in-memory cap; the full output was spilled to `<path>` (also on `results[i].outputFile`).                                                                     |
+| `structured output: …` (in `results[i].structuredError`)  | The reply failed the `outputSchema` contract (parse or validation). The dispatch still succeeded — re-dispatch or inspect `results[i].messages`.                                                  |
+| `NOT saved: … MAJOR differences …` (from `subagent_save`) | The saved definition differs majorly from the existing one. Pass `overwrite: true` only when replacing is intended, or save under a different name.                                               |
+| `NOT saved: … already exists as a bundled agent …`        | Shadowing a bundled name is a one-time intentional act — re-call with `overwrite: true` to record the override.                                                                                   |
+| `NOT saved: scope 'project' requires a trusted project`   | Project-scope saves are blocked until the project is trusted in pi's settings. Save to user scope instead.                                                                                        |
+| `[agent-sync] <agent> (advisory): …`                      | A bundled agent you shadow was updated, but your copy has major edits/conflicts — sync did not touch it. Reconcile the named file by hand.                                                        |
+| `Agent discovery failed: …`                               | An agent directory contains a file that could not be read or parsed. Fix or remove the offending `.md` (other agents keep loading either way).                                                    |
 
 ## Cancellation
 

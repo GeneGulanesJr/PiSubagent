@@ -120,6 +120,38 @@ export interface SubagentDetails {
   results: SingleResult[];
   /** Aggregate usage across results (parallel/chain only; absent for single). */
   usage?: UsageStats;
+  /** Bundled-shadow sync outcomes for this dispatch (see src/agent-sync.ts). */
+  agentSyncNotes?: string[];
+}
+
+/** What a subagent_save call did (see src/agent-store.ts). */
+export type SaveAgentAction =
+  'created' | 'created-shadow' | 'unchanged' | 'updated' | 'replaced' | 'blocked' | 'error';
+
+export interface SaveAgentParams {
+  name: string;
+  description: string;
+  systemPrompt: string;
+  /** Comma-separated tool list for the child (--tools). */
+  tools?: string;
+  /** Provider/model id pin; wins over tier at dispatch. */
+  model?: string;
+  /** Cost tier ('cheap' | 'thinking') — routes to the tier's model. */
+  tier?: Tier;
+  thinkingLevel?: ThinkingLevel;
+  /** Where to write: ~/.pi/agent/agents (default) or the project's .pi/agents. */
+  scope?: 'user' | 'project';
+  /** Required to shadow a bundled agent or apply a major update. */
+  overwrite?: boolean;
+}
+
+/** details payload for subagent_save results. */
+export interface SaveDetails {
+  action: SaveAgentAction;
+  filePath?: string;
+  /** Logical fields that differed on an update/replacement. */
+  changedFields?: string[];
+  warnings?: string[];
 }
 
 export type OnUpdateCallback = (partial: AgentToolResult<SubagentDetails>) => void;

@@ -9,7 +9,12 @@ export default {
   // are included alongside their directory contents. Excluded: output/render/
   // security/agents (mostly string formatting, low test signal), types.ts/index.ts
   // (no behavior to mutate), runner.ts (interface only), in-process.ts (stub).
-  // Result: ~600 mutants instead of 1320, ~15 min runtime vs ~39 min.
+  // Also excluded by design: text-diff/agent-store/agent-sync (the v0.4 agent
+  // save + bundled-sync modules) — their behavior is pinned by 70+ dedicated
+  // vitest cases incl. ratio-edge and merge-conflict tables, which is the
+  // same trade-off as agents.ts (deterministic pure logic, exhaustive unit
+  // coverage, low mutant-signal). Result: ~600 mutants instead of 1320,
+  // ~15 min runtime vs ~39 min.
   mutate: [
     // Core dispatch path (well-tested)
     'src/dispatch.ts',
