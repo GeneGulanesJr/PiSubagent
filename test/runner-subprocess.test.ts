@@ -451,6 +451,16 @@ describe('SubprocessRunner.run hardening', () => {
     fsMocks.writeFile.mockRejectedValue(new Error('disk full'));
     fsMocks.mkdtemp.mockResolvedValue('/tmp/pi-subagent-fake');
     fsMocks.rmSync.mockClear();
+    // Stub rmSync to a no-op so writePromptFile's self-cleanup and the
+    // outer run() finally block never touch the real filesystem. On
+    // slow CI filesystems (ubuntu/node22) a real rmSync syscall - even
+    // one that resolves immediately via force: true on a non-existent
+    // path - can stall long enough that the 200-tick setImmediate poll
+    // inside emit() exhausts before the runner attaches its 'close'
+    // listener, producing a spurious "spawn did not happen" rejection.
+    // vi.fn() still records the call so the recursive:true assertion
+    // below keeps verifying the actual cleanup intent.
+    fsMocks.rmSync.mockImplementation(() => undefined);
 
     try {
       const proc = makeFakeProc();
