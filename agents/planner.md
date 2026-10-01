@@ -2,7 +2,7 @@
 name: planner
 description: Creates implementation plans from context and requirements
 tools: read, grep, find, ls
-model: claude-sonnet-4-5
+model: zai/glm-5.3-flash
 thinkingLevel: high
 ---
 
