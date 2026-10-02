@@ -12,7 +12,10 @@ PiSubagent lets a parent Pi session delegate work to focused subagents that
 run in isolated subprocess contexts. It registers one `subagent` tool with
 three modes — `single`, `parallel`, `chain` — and ships with eight ready-made
 agents (`scout`, `planner`, `reviewer`, `debugger`, `test-writer`, `librarian`,
-`aws-architect`, `worker`). Subagents are resolved from
+`aws-architect`, `worker`, plus an audit/optimization suite: `senior-reviewer`,
+`bug-hunter`, `deep-auditor`, `security-auditor`, `readiness-reviewer`,
+`deps-auditor`, `perf-optimizer`, `database-optimizer`, `ai-cleanup`,
+`code-explainer`, `test-generator`). Subagents are resolved from
 project-local `.pi/agents/`, user-level `~/.pi/agent/agents/`, and the
 bundled defaults, with a one-time confirmation prompt before untrusted
 project agents run.
@@ -60,11 +63,11 @@ Any dispatch (or item) also accepts runtime knobs:
 
 ## Modes
 
-| Mode     | Shape              | When to use                                                         | Concurrency                  |
-| -------- | ------------------ | ------------------------------------------------------------------- | ---------------------------- |
-| single   | `{ agent, task }`  | One focused dispatch; parent only needs the final answer            | 1                            |
-| parallel | `{ tasks: [...] }` | N independent jobs whose results don't depend on each other         | up to 4 in flight, ≤ 8 total |
-| chain    | `{ chain: [...] }` | Sequential pipeline where each step feeds the next via `{previous}` | 1 step at a time             |
+| Mode     | Shape              | When to use                                                         | Concurrency                                                     |
+| -------- | ------------------ | ------------------------------------------------------------------- | --------------------------------------------------------------- |
+| single   | `{ agent, task }`  | One focused dispatch; parent only needs the final answer            | 1                                                               |
+| parallel | `{ tasks: [...] }` | N independent jobs whose results don't depend on each other         | up to 4 in flight (per-provider caps may lower this), ≤ 8 total |
+| chain    | `{ chain: [...] }` | Sequential pipeline where each step feeds the next via `{previous}` | 1 step at a time                                                |
 
 Use `chain` for scout → plan → worker flows (bundled `/implement`,
 `/scout-and-plan`, `/implement-and-review` prompts wrap these). Use
@@ -79,8 +82,21 @@ plan. Reach for it before opening an issue.
 ## Limits
 
 - `MAX_PARALLEL_TASKS = 8` — `tasks[]` length must be ≤ 8.
-- `MAX_CONCURRENCY = 4` — parallel runs are chunked into batches; at most 4
-  spawns are in flight at any moment.
+- `MAX_CONCURRENCY = 4` — parallel dispatch runs as a sliding window; at most
+  4 spawns are in flight at any moment.
+- **Per-provider concurrency caps** — provider plans limit concurrent requests
+  per account, so parallel dispatch also enforces a per-provider slot count on
+  top of the total window. Built-in caps: **z.ai → 2, MiniMax → 3**; a run's
+  provider comes from its resolved model (dispatch `model`/`tier` → agent
+  frontmatter → parent inheritance). Providers without a configured cap are
+  bounded only by `MAX_CONCURRENCY`. Override via
+  `~/.pi/agent/pisubagent.limits.json`:
+  ```json
+  { "zai": 2, "minimax": 3, "anthropic": 4 }
+  ```
+  Values must be positive integers (0 would deadlock the scheduler); invalid
+  entries fall back to defaults. A provider at its cap does not block other
+  providers — mixed batches keep flowing.
 - `PER_TASK_OUTPUT_CAP = 50 * 1024` bytes — each task's parent-facing summary
   is capped; full output is preserved verbatim in `details.results[i].messages`.
 - stdout cap = 1 MB per run — beyond it, bytes spill to
@@ -93,14 +109,25 @@ plan. Reach for it before opening an issue.
 
 ## Built-in agents
 
-- `scout` (tier `cheap` → MiniMax M2.5, thinking `low`) — fast recon
-- `planner` (Sonnet, thinking `high`) — implementation plans
-- `reviewer` (Sonnet, thinking `high`) — code review
-- `debugger` (Sonnet) — diagnose failures, propose minimal fix
-- `test-writer` (Sonnet) — focused unit tests
-- `librarian` (tier `cheap` → MiniMax M2.5, thinking `low`, web tools) — research and docs lookup with citations
-- `aws-architect` (Sonnet) — AWS Well-Architected review of IaC
-- `worker` (Sonnet) — general implementation
+- `scout` (tier `cheap`, thinking `low`) — fast recon
+- `planner` (GLM-5.3-Flash, thinking `high`) — implementation plans
+- `reviewer` (GLM-5.3-Flash, thinking `high`) — code review
+- `debugger` (GLM-5.3-Flash) — diagnose failures, propose minimal fix
+- `test-writer` (GLM-5.3-Flash) — focused unit tests
+- `librarian` (tier `cheap`, thinking `low`, web tools) — research and docs lookup with citations
+- `aws-architect` (GLM-5.3-Flash) — AWS Well-Architected review of IaC
+- `worker` (GLM-5.3-Flash) — general implementation
+- `senior-reviewer` (thinking `high`, read-only) — pre-merge review of the current diff with a blocking-issues verdict
+- `bug-hunter` (thinking `high`) — confirmed-bug hunting; fixes one at a time with tests
+- `deep-auditor` (thinking `high`, read-only) — deep full-codebase audit, prioritized findings
+- `security-auditor` (thinking `high`) — security audit; verified fixes with separate commits
+- `readiness-reviewer` — production-readiness review, then highest-impact fixes
+- `deps-auditor` — dependency audit; only justified changes, tests after
+- `perf-optimizer` — measurable performance pass with baselines and per-change commits
+- `database-optimizer` — DB performance audit (N+1, indexes, plans) and fixes
+- `ai-cleanup` — cleans up AI-introduced problems (over-engineering, dead code, duplication)
+- `code-explainer` (read-only) — "how does this work" walkthrough before touching code
+- `test-generator` — gap-driven test generation for under-tested areas
 
 Override by dropping a same-named `*.md` in `~/.pi/agent/agents/` (or save
 one with the `subagent_save` tool — see below; the tool path asks for a
