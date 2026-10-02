@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Per-provider concurrency caps** (ADR-0005) — parallel dispatch enforces a
+  per-provider slot count on top of `MAX_CONCURRENCY`, matching provider plan
+  limits on concurrent requests. Built-in caps: `zai: 2`, `minimax: 3`; a
+  run's provider comes from its resolved model (dispatch `model`/`tier` →
+  agent frontmatter → parent inheritance). Override via
+  `~/.pi/agent/pisubagent.limits.json` (flat map provider → positive
+  integer; invalid entries fall back to defaults). Implementation: the
+  ADR-0001 batch loop is replaced by a sliding-window scheduler
+  (`runWithCaps`) — a provider at its cap no longer head-of-line blocks
+  other providers, and a rejected task rethrows only after its siblings
+  settle (no orphaned background runs).
+- **11 new bundled audit/optimization agents** — `senior-reviewer`,
+  `bug-hunter`, `deep-auditor`, `security-auditor`, `readiness-reviewer`,
+  `deps-auditor`, `perf-optimizer`, `database-optimizer`, `ai-cleanup`,
+  `code-explainer`, `test-generator`. The read-only reviewers
+  (`senior-reviewer`, `deep-auditor`, `code-explainer`) get no edit tools
+  (bash restricted to read-only git commands where granted); the rest can fix
+  and verify. All pinned to `zai/glm-5.3-flash`; the analysis-heavy four
+  (`senior-reviewer`, `bug-hunter`, `deep-auditor`, `security-auditor`) run
+  with `thinkingLevel: high`.
 - **Cost tiers** (`tier: cheap | thinking`) — quota-preserving offload of
   non-crucial subagent work to a cheaper provider model. Resolution ladder
   (most specific wins): dispatch `model` → dispatch `tier` → agent frontmatter

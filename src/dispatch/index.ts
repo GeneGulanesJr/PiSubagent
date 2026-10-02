@@ -21,3 +21,6 @@ export { runChain } from './run-chain.js';
 // Capacity + throttle constants.
 export { MAX_PARALLEL_TASKS, MAX_CONCURRENCY, PER_TASK_OUTPUT_CAP } from './limits.js';
 export { PROGRESS_THROTTLE_MS, createProgressEmitter } from './progress.js';
+
+// Concurrency scheduling (sliding window + per-provider caps).
+export { runWithCaps, providerForRun } from './schedule.js';

@@ -2,9 +2,10 @@ import { isFailedResult, getResultOutput, truncateParallelOutput } from '../outp
 import { applyStructured, withStructuredInstruction } from '../structured.js';
 import type { AgentRunner } from '../runner/runner.js';
 import type { SubagentParams, AgentConfig, SingleResult } from '../types.js';
-import { MAX_CONCURRENCY, MAX_PARALLEL_TASKS, PER_TASK_OUTPUT_CAP } from './limits.js';
+import { MAX_PARALLEL_TASKS, PER_TASK_OUTPUT_CAP } from './limits.js';
 import { baseDetails, parentDefaults, runWithRetries, stubResult, sumUsage } from './internal.js';
 import { createProgressEmitter, snapshot } from './progress.js';
+import { providerForRun, runWithCaps } from './schedule.js';
 import type { DispatchContext, ToolResultLike } from './types.js';
 
 export async function runParallel(
@@ -31,50 +32,53 @@ export async function runParallel(
   const results: SingleResult[] = tasks.map((t) => stubResult(lookup(t.agent), t.task));
   const emit = createProgressEmitter(ctx.onUpdate, ctx.progressIntervalMs);
   emit?.(snapshot('parallel', base, results, tasks.length));
-  // Per-batch concurrency cap. The design spec (docs/superpowers/specs/2026-09-08-pisubagent-design.md
-  // § Limits) advertises MAX_CONCURRENCY = 4 as a per-batch window — at most N
-  // runs in flight at any moment. Prior to this fix the entire tasks[] array
-  // fired via bare Promise.all, which made the cap unenforced (API drift).
-  // Implementation: chunk into batches of size MAX_CONCURRENCY, await each
-  // batch's Promise.all before starting the next. Result order and progress
-  // emissions are identical to the unbounded version.
-  for (let batchStart = 0; batchStart < tasks.length; batchStart += MAX_CONCURRENCY) {
-    const batchEnd = Math.min(batchStart + MAX_CONCURRENCY, tasks.length);
-    await Promise.all(
-      tasks.slice(batchStart, batchEnd).map((t, j) => {
-        const i = batchStart + j;
-        return runWithRetries(
-          runner,
-          {
-            agent: lookup(t.agent),
-            task: withStructuredInstruction(t.task, t.outputSchema),
-            cwd: t.cwd ?? ctx.cwd,
-            thinkingLevelOverride: t.thinkingLevel,
-            modelOverride: t.model,
-            tierOverride: t.tier,
-            timeoutMs: t.timeoutMs,
-            session: t.session,
-            resume: t.resume,
-            sessionDir: t.sessionDir,
-            ...parentDefaults(ctx),
-          },
-          ctx,
-          t.retries,
-          (partial) => {
-            results[i] = { ...partial, running: true };
-            emit?.(snapshot('parallel', base, results, tasks.length));
-          },
-          { backoffMs: t.retryBackoffMs, retryOn: t.retryOn },
-        ).then((final) => {
-          const settled = t.outputSchema
-            ? { ...applyStructured(final, t.outputSchema), task: t.task }
-            : final;
-          results[i] = { ...settled, running: false };
-          emit?.(snapshot('parallel', base, results, tasks.length));
-        });
-      }),
-    );
-  }
+  // Concurrency scheduling. Originally a per-batch cap of MAX_CONCURRENCY
+  // (ADR-0001); now a sliding window that also enforces per-provider caps
+  // (provider plan limits — z.ai 2, MiniMax 3; ADR-0005). The batch loop
+  // could not express per-provider slots: one batch of 4 same-provider
+  // tasks would blow a cap of 2. A task whose provider is at its cap does
+  // not block later tasks with free slots. Result order and progress
+  // emissions are identical to the batched version.
+  const parent = parentDefaults(ctx);
+  const providers = tasks.map((t) =>
+    providerForRun(
+      lookup(t.agent),
+      { modelOverride: t.model, tierOverride: t.tier },
+      parent.parentModel,
+    ),
+  );
+  await runWithCaps(providers, (i) => {
+    const t = tasks[i]!;
+    return runWithRetries(
+      runner,
+      {
+        agent: lookup(t.agent),
+        task: withStructuredInstruction(t.task, t.outputSchema),
+        cwd: t.cwd ?? ctx.cwd,
+        thinkingLevelOverride: t.thinkingLevel,
+        modelOverride: t.model,
+        tierOverride: t.tier,
+        timeoutMs: t.timeoutMs,
+        session: t.session,
+        resume: t.resume,
+        sessionDir: t.sessionDir,
+        ...parent,
+      },
+      ctx,
+      t.retries,
+      (partial) => {
+        results[i] = { ...partial, running: true };
+        emit?.(snapshot('parallel', base, results, tasks.length));
+      },
+      { backoffMs: t.retryBackoffMs, retryOn: t.retryOn },
+    ).then((final) => {
+      const settled = t.outputSchema
+        ? { ...applyStructured(final, t.outputSchema), task: t.task }
+        : final;
+      results[i] = { ...settled, running: false };
+      emit?.(snapshot('parallel', base, results, tasks.length));
+    });
+  });
   const successCount = results.filter((r) => !isFailedResult(r)).length;
   const summaries = results.map((r) => {
     const status = isFailedResult(r) ? 'failed' : 'completed';
