@@ -6,3 +6,5 @@ package-lock.json
 agents/
 prompts/
 skills/
+.zcode/
+scripts/
