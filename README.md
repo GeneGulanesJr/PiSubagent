@@ -15,7 +15,7 @@ agents (`scout`, `planner`, `reviewer`, `debugger`, `test-writer`, `librarian`,
 `aws-architect`, `worker`, plus an audit/optimization suite: `senior-reviewer`,
 `bug-hunter`, `deep-auditor`, `security-auditor`, `readiness-reviewer`,
 `deps-auditor`, `perf-optimizer`, `database-optimizer`, `ai-cleanup`,
-`code-explainer`, `test-generator`). Subagents are resolved from
+`code-explainer`, `test-generator`, `perf-benchmarker`). Subagents are resolved from
 project-local `.pi/agents/`, user-level `~/.pi/agent/agents/`, and the
 bundled defaults, with a one-time confirmation prompt before untrusted
 project agents run.
@@ -128,6 +128,7 @@ plan. Reach for it before opening an issue.
 - `ai-cleanup` — cleans up AI-introduced problems (over-engineering, dead code, duplication)
 - `code-explainer` (read-only) — "how does this work" walkthrough before touching code
 - `test-generator` — gap-driven test generation for under-tested areas
+- `perf-benchmarker` — reproducible performance baseline: measures real workloads, persists a machine-readable baseline artifact, ranks bottlenecks; never optimizes
 
 Override by dropping a same-named `*.md` in `~/.pi/agent/agents/` (or save
 one with the `subagent_save` tool — see below; the tool path asks for a
