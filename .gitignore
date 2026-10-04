@@ -6,3 +6,11 @@ dist/
 coverage/
 .vitest-cache/
 reports/
+
+# Local-only ZCode subagent tooling and session scratch (not for VCS):
+# scripts/ holds the pi→ZCode agent sync/validate scripts, agents/zcode/ the
+# generated ZCode-format copies. Regenerate with:
+#   node scripts/sync-zcode-agents.mjs
+.zcode/
+agents/zcode/
+scripts/
