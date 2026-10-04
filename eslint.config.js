@@ -45,6 +45,7 @@ export default tseslint.config(
       'eslint.config.js',
       'vitest.config.ts',
       'stryker.config.mjs',
+      'scripts/',
     ],
   },
 );
