@@ -101,6 +101,12 @@ export interface SingleResult {
   attempts?: number;
   /** Path to the full stdout artifact when output exceeded the 1MB in-memory cap. */
   outputFile?: string;
+  /**
+   * Bounded dead-letter capture of malformed JSONL stdout lines, as
+   * `"line N: <content>"` (1-based line offset, content clipped). Absent
+   * when nothing was dropped; capped so a garbage fire can't OOM the parent.
+   */
+  malformedOutput?: string[];
   /** Parsed structured output when outputSchema was given and the reply parsed+validated. */
   data?: unknown;
   /** Set when structured extraction failed (parse or validation). Never silent: check this. */

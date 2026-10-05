@@ -15,6 +15,15 @@ import { resolveRunModel } from '../../tier.js';
 /** Hard cap on stdout line buffer / stderr accumulator per run (1 MB). */
 const MAX_BUFFER_BYTES = 1024 * 1024;
 
+/**
+ * Bounded dead-letter capture for malformed JSONL stdout lines (issue #2).
+ * Keeps WHAT dropped — not just how much — but the capture is capped and
+ * each line clipped, so a garbage fire can't OOM the parent (same
+ * discipline as the Bug 2 / Bug 7 stderr caps).
+ */
+const MAX_MALFORMED_CAPTURED = 20;
+const MAX_MALFORMED_LINE_CHARS = 200;
+
 function emptyUsage(): UsageStats {
   return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0 };
 }
@@ -164,7 +173,9 @@ export class SubprocessRunner implements AgentRunner {
     let tmpPromptDir: string | null = null;
     let wasAborted = false;
     let didTimeOut = false;
-    let droppedJsonlCount = 0;
+    let malformedLineCount = 0;
+    let jsonlLineNo = 0;
+    const malformedOutput: string[] = [];
     let onUpdateErrorLogged = false;
     let spillPath: string | null = null;
 
@@ -248,15 +259,25 @@ export class SubprocessRunner implements AgentRunner {
         };
 
         const processLine = (line: string) => {
+          jsonlLineNo++;
           const trimmed = line.trim();
           if (!trimmed) return;
           let event: { type?: string; message?: unknown };
           try {
             event = JSON.parse(trimmed);
           } catch {
-            // Bug 7: malformed lines are tallied for a single end-of-run
-            // summary; never log per-line (would itself be unbounded).
-            droppedJsonlCount++;
+            // Bug 7 + issue #2: tally every drop for the single end-of-run
+            // summary, and capture (bounded, with the 1-based line offset)
+            // the first offenders so the misbehaving child can be diagnosed
+            // from result.malformedOutput alone.
+            malformedLineCount++;
+            if (malformedOutput.length < MAX_MALFORMED_CAPTURED) {
+              const clipped =
+                trimmed.length > MAX_MALFORMED_LINE_CHARS
+                  ? `${trimmed.slice(0, MAX_MALFORMED_LINE_CHARS)}…`
+                  : trimmed;
+              malformedOutput.push(`line ${jsonlLineNo}: ${clipped}`);
+            }
             return;
           }
           if (event.type === 'message_end' && event.message) {
@@ -369,8 +390,14 @@ export class SubprocessRunner implements AgentRunner {
 
       // Bug 7: surface malformed-JSONL drops as a single stderr line so
       // operators can spot a misbehaving child without filling memory.
-      if (droppedJsonlCount > 0) {
-        appendStderr(`[subprocess: ${droppedJsonlCount} malformed JSONL lines dropped]\n`);
+      // Issue #2: attach the bounded dead-letter capture to the result too.
+      if (malformedLineCount > 0) {
+        result.malformedOutput = malformedOutput;
+        appendStderr(`[subprocess: ${malformedLineCount} malformed JSONL lines dropped]\n`);
+        const captured = malformedOutput.map((l) => l.replace(/\n/g, '\\n')).join(' | ');
+        appendStderr(
+          `[subprocess: malformed capture (first ${malformedOutput.length} of ${malformedLineCount}): ${captured}]\n`,
+        );
       }
 
       result.exitCode = exitCode;
