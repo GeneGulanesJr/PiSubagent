@@ -311,6 +311,10 @@ export default function (pi: ExtensionAPI, deps: SubagentExtensionDeps = {}) {
       "Optional tier ('cheap' | 'thinking') routes the run to an offload model",
       '(defaults: MiniMax M2.5 / M3 — overridable in ~/.pi/agent/pisubagent.tiers.json)',
       'to preserve the primary provider quota; tier-routed runs fall back to the parent model once on failure.',
+      'Delegation policy: spawn only for clear net benefit — context isolation, genuinely independent parallel work, or a large investigation whose findings collapse to a concise result.',
+      'Good fits: repo exploration, research, profiling, security/dependency review, finding usages, independent code review or tests for defined behavior.',
+      'Poor fits: small edits, simple bug fixes, straightforward refactors, tasks needing continuous parent context. If uncertain, do the work yourself;',
+      'prefer 0–1 subagents and reserve parallel fan-out for genuinely independent tasks. Full policy: docs/delegation-policy.md.',
     ].join(' '),
     parameters: SubagentParamsSchema,
 

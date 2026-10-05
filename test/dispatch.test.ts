@@ -6,6 +6,7 @@ import {
   execute,
   MAX_CONCURRENCY,
   PER_TASK_OUTPUT_CAP,
+  POLICY_PARALLEL_WARN,
   type DispatchContext,
 } from '../src/dispatch.js';
 import type { AgentRunner } from '../src/runner/runner.js';
@@ -353,5 +354,55 @@ describe('runChain caps {previous} to PER_TASK_OUTPUT_CAP', () => {
     // The preserved prefix is still there (truncateParallelOutput keeps the
     // first PER_TASK_OUTPUT_CAP bytes verbatim).
     expect(step2Resolved).toContain('y');
+  });
+});
+
+describe('runParallel delegation-policy note (ADR-0006)', () => {
+  const agents: AgentConfig[] = [
+    { name: 'a', description: '', systemPrompt: '', source: 'bundled', filePath: '' },
+  ];
+  const ctx: DispatchContext = {
+    cwd: '/tmp',
+    hasUI: false,
+    isProjectTrusted: () => true,
+    ui: { confirm: async () => true },
+  };
+  const okRunner: AgentRunner = {
+    id: 'subprocess',
+    run: async (input) => makeResultWithText(input.agent.name, 'done'),
+  };
+
+  const text = (out: { content: Array<{ type: string; text?: string }> }) =>
+    out.content[0].type === 'text' ? (out.content[0].text ?? '') : '';
+
+  it('exports POLICY_PARALLEL_WARN = 2', () => {
+    expect(POLICY_PARALLEL_WARN).toBe(2);
+  });
+
+  it('adds no policy note at or below the soft threshold', async () => {
+    const tasks = [
+      { agent: 'a', task: 't0' },
+      { agent: 'a', task: 't1' },
+    ];
+    const out = await execute({ tasks }, ctx, agents, okRunner);
+    expect(out.isError).toBe(false);
+    expect(text(out)).not.toContain('Policy note');
+  });
+
+  it('appends a non-blocking policy note above the threshold', async () => {
+    const tasks = [
+      { agent: 'a', task: 't0' },
+      { agent: 'a', task: 't1' },
+      { agent: 'a', task: 't2' },
+    ];
+    const out = await execute({ tasks }, ctx, agents, okRunner);
+    // Guidance only — the note must never flip isError.
+    expect(out.isError).toBe(false);
+    const t = text(out);
+    expect(t).toContain('Policy note');
+    expect(t).toContain(`${tasks.length} parallel subagents`);
+    expect(t).toContain('docs/delegation-policy.md');
+    // The note comes after the per-task summaries.
+    expect(t.indexOf('Policy note')).toBeGreaterThan(t.indexOf('[a] completed'));
   });
 });

@@ -2,7 +2,7 @@ import { isFailedResult, getResultOutput, truncateParallelOutput } from '../outp
 import { applyStructured, withStructuredInstruction } from '../structured.js';
 import type { AgentRunner } from '../runner/runner.js';
 import type { SubagentParams, AgentConfig, SingleResult } from '../types.js';
-import { MAX_PARALLEL_TASKS, PER_TASK_OUTPUT_CAP } from './limits.js';
+import { MAX_PARALLEL_TASKS, PER_TASK_OUTPUT_CAP, POLICY_PARALLEL_WARN } from './limits.js';
 import { baseDetails, parentDefaults, runWithRetries, stubResult, sumUsage } from './internal.js';
 import { createProgressEmitter, snapshot } from './progress.js';
 import { providerForRun, runWithCaps } from './schedule.js';
@@ -90,11 +90,19 @@ export async function runParallel(
     const body = truncateParallelOutput(getResultOutput(r), PER_TASK_OUTPUT_CAP);
     return `### [${r.agent}] ${status}\n\n${body}`;
   });
+  // Delegation-policy nudge (ADR-0006): large fan-outs are allowed (up to
+  // MAX_PARALLEL_TASKS) but get a one-line, non-blocking note in the
+  // parent-facing text when they exceed the soft guideline. Guidance only —
+  // it never blocks the dispatch or changes isError.
+  const policyNote =
+    tasks.length > POLICY_PARALLEL_WARN
+      ? `\n\n---\n\n_Policy note: dispatched ${tasks.length} parallel subagents (soft guideline ≤ ${POLICY_PARALLEL_WARN}). Parallelism is for genuinely independent work; prefer 0–1 subagents otherwise — see docs/delegation-policy.md._`
+      : '';
   return {
     content: [
       {
         type: 'text',
-        text: `Parallel: ${successCount}/${results.length} succeeded\n\n${summaries.join('\n\n---\n\n')}`,
+        text: `Parallel: ${successCount}/${results.length} succeeded\n\n${summaries.join('\n\n---\n\n')}${policyNote}`,
       },
     ],
     details: { ...base, results, usage: sumUsage(results) },
