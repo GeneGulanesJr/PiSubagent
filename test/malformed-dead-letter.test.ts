@@ -72,9 +72,7 @@ describe('malformed-JSONL dead-letter capture (issue #2)', () => {
     const proc = makeFakeProc();
     const runner = new SubprocessRunner({ spawnFn: (() => proc) as never });
     const promise = runner.run(baseInput);
-    await emit(proc, [
-      [validLine, '{not json 1', validLine].join('\n') + '\n',
-    ]);
+    await emit(proc, [[validLine, '{not json 1', validLine].join('\n') + '\n']);
     const result = await promise;
 
     expect(result.messages).toHaveLength(2);

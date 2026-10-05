@@ -50,6 +50,13 @@ Any dispatch (or item) also accepts runtime knobs:
   exponential (base, 2×, 4×), capped at 30s. 0 = immediate retry.
 - `retryOn` (`["error"]`, `["timeout"]`, or both) — failure classes eligible
   for retry. Default: any failed result. Aborts are never retried.
+- `chainFailureThreshold` (1–10, default 1, chain mode) — consecutive-failure
+  circuit breaker. `1` stops the chain at the first failed step (historical
+  behavior); `2`+ tolerates that many consecutive failures and continues from
+  the last GOOD step's output (`{previous}` never carries a failure forward).
+  When the breaker trips, untouched steps are reported with
+  `stopReason: "skipped_due_to_open_circuit"` and `details.circuitBreaker`
+  records the trip. See `docs/adr/0006-loop-resilience.md`.
 - `outputSchema` — JSON Schema contract (ajv-validated). Top-level applies to
   single mode; set it per item on `tasks[]`/`chain[]` for parallel/chain. The
   child is instructed to reply with pure JSON; the parsed value lands on
@@ -270,23 +277,45 @@ require `agentScope: "both"` (or `"project"`) plus a one-time confirmation
 when the project is untrusted. See `agents/` for full examples and
 `docs/superpowers/specs/2026-09-08-pisubagent-design.md` for the full spec.
 
+## Resilience
+
+Three bounded mechanisms harden dispatch against flaky children (see
+`docs/adr/0006-loop-resilience.md`):
+
+- **Launch retry (automatic, all modes).** A child that dies at launch —
+  spawn error, or a non-zero exit within 100 ms producing zero output — is
+  relaunched up to 3 times with exponential backoff (1s, 2s, 4s, ±20%
+  jitter). Real agent output, aborts, and timeouts are never retried;
+  relaunches surface as `results[i].launchRetries` (absent when the first
+  launch stuck) plus a `[subprocess: launch failure …]` stderr trail.
+- **Malformed-JSONL dead-letter capture.** Child stdout lines that aren't
+  valid JSONL are tallied as before _and_ captured on
+  `results[i].malformedOutput` as `"line N: <content>"` — capped at 20
+  entries, each clipped to 200 chars. Malformed lines never enter
+  `messages`, so they never propagate through a chain.
+- **Chain circuit breaker.** `chainFailureThreshold` (above). A trip is
+  recorded on `details.circuitBreaker`:
+  `{threshold, consecutiveFailures, stoppedAtStep, skippedSteps}`.
+
 ## Troubleshooting
 
-| Message                                                   | Meaning                                                                                                                                                                                           |
-| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Invalid parameters. Provide exactly one mode: …`         | Call had zero or more than one of `{agent, task}`, `{tasks}`, `{chain}`.                                                                                                                          |
-| `Canceled: project-local agents not approved.`            | User denied the prompt, or `hasUI === false` on an untrusted project. Pass `confirmProjectAgents: false` to skip when intentional.                                                                |
-| `Too many parallel tasks (N). Max is 8.`                  | `tasks.length > MAX_PARALLEL_TASKS`. Split into smaller batches.                                                                                                                                  |
-| `[Output truncated: N bytes omitted. …]`                  | A task's parent-facing summary exceeded `PER_TASK_OUTPUT_CAP`. Full output is preserved in `details.results[i].messages`.                                                                         |
-| `[subprocess: N malformed JSONL lines dropped]`           | The child `pi` process emitted lines that weren't valid JSONL events. Inspect the agent's prompt — usually stray print output.                                                                    |
-| `run timeout after Xms`                                   | The per-dispatch `timeoutMs` (or test-only `runTimeoutMs`) was exceeded; the child was killed and the result marked `timedOut` with `stopReason: "timeout"`. Raise the limit or shorten the task. |
-| `[truncated: stdout exceeded 1MB — full output: <path>]`  | The child's stdout crossed the 1 MB in-memory cap; the full output was spilled to `<path>` (also on `results[i].outputFile`).                                                                     |
-| `structured output: …` (in `results[i].structuredError`)  | The reply failed the `outputSchema` contract (parse or validation). The dispatch still succeeded — re-dispatch or inspect `results[i].messages`.                                                  |
-| `NOT saved: … MAJOR differences …` (from `subagent_save`) | The saved definition differs majorly from the existing one. Pass `overwrite: true` only when replacing is intended, or save under a different name.                                               |
-| `NOT saved: … already exists as a bundled agent …`        | Shadowing a bundled name is a one-time intentional act — re-call with `overwrite: true` to record the override.                                                                                   |
-| `NOT saved: scope 'project' requires a trusted project`   | Project-scope saves are blocked until the project is trusted in pi's settings. Save to user scope instead.                                                                                        |
-| `[agent-sync] <agent> (advisory): …`                      | A bundled agent you shadow was updated, but your copy has major edits/conflicts — sync did not touch it. Reconcile the named file by hand.                                                        |
-| `Agent discovery failed: …`                               | An agent directory contains a file that could not be read or parsed. Fix or remove the offending `.md` (other agents keep loading either way).                                                    |
+| Message                                                         | Meaning                                                                                                                                                                                                                               |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Invalid parameters. Provide exactly one mode: …`               | Call had zero or more than one of `{agent, task}`, `{tasks}`, `{chain}`.                                                                                                                                                              |
+| `Canceled: project-local agents not approved.`                  | User denied the prompt, or `hasUI === false` on an untrusted project. Pass `confirmProjectAgents: false` to skip when intentional.                                                                                                    |
+| `Too many parallel tasks (N). Max is 8.`                        | `tasks.length > MAX_PARALLEL_TASKS`. Split into smaller batches.                                                                                                                                                                      |
+| `[Output truncated: N bytes omitted. …]`                        | A task's parent-facing summary exceeded `PER_TASK_OUTPUT_CAP`. Full output is preserved in `details.results[i].messages`.                                                                                                             |
+| `[subprocess: N malformed JSONL lines dropped]`                 | The child `pi` process emitted lines that weren't valid JSONL events. The first 20 are captured (offsets + clipped content) on `results[i].malformedOutput`; inspect the agent's prompt — usually stray print output.                 |
+| `[subprocess: launch failure (retry N/3) — relaunching in Xms]` | The child died at launch (spawn error, or non-zero exit within 100 ms with no output) and was relaunched with backoff. Final outcome in `results[i].launchRetries`; persistent failures end after 3 retries.                          |
+| `Chain stopped at step N … skipped_due_to_open_circuit`         | A chain step failed after `chainFailureThreshold` consecutive failures. Ran steps keep their outputs; untouched steps are marked `skipped_due_to_open_circuit` in `details.results`, and `details.circuitBreaker` describes the trip. |
+| `run timeout after Xms`                                         | The per-dispatch `timeoutMs` (or test-only `runTimeoutMs`) was exceeded; the child was killed and the result marked `timedOut` with `stopReason: "timeout"`. Raise the limit or shorten the task.                                     |
+| `[truncated: stdout exceeded 1MB — full output: <path>]`        | The child's stdout crossed the 1 MB in-memory cap; the full output was spilled to `<path>` (also on `results[i].outputFile`).                                                                                                         |
+| `structured output: …` (in `results[i].structuredError`)        | The reply failed the `outputSchema` contract (parse or validation). The dispatch still succeeded — re-dispatch or inspect `results[i].messages`.                                                                                      |
+| `NOT saved: … MAJOR differences …` (from `subagent_save`)       | The saved definition differs majorly from the existing one. Pass `overwrite: true` only when replacing is intended, or save under a different name.                                                                                   |
+| `NOT saved: … already exists as a bundled agent …`              | Shadowing a bundled name is a one-time intentional act — re-call with `overwrite: true` to record the override.                                                                                                                       |
+| `NOT saved: scope 'project' requires a trusted project`         | Project-scope saves are blocked until the project is trusted in pi's settings. Save to user scope instead.                                                                                                                            |
+| `[agent-sync] <agent> (advisory): …`                            | A bundled agent you shadow was updated, but your copy has major edits/conflicts — sync did not touch it. Reconcile the named file by hand.                                                                                            |
+| `Agent discovery failed: …`                                     | An agent directory contains a file that could not be read or parsed. Fix or remove the offending `.md` (other agents keep loading either way).                                                                                        |
 
 ## Cancellation
 
