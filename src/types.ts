@@ -99,6 +99,12 @@ export interface SingleResult {
   timedOut?: boolean;
   /** Total attempts made when retries were configured (absent when 1 attempt). */
   attempts?: number;
+  /**
+   * Launch-phase retries (issue #2): times the child was relaunched after a
+   * transient launch failure (spawn error or instant death with zero agent
+   * output) before this run's outcome. Absent when the first launch stuck.
+   */
+  launchRetries?: number;
   /** Path to the full stdout artifact when output exceeded the 1MB in-memory cap. */
   outputFile?: string;
   /**

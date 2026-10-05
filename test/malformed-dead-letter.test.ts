@@ -70,7 +70,7 @@ async function emit(
 describe('malformed-JSONL dead-letter capture (issue #2)', () => {
   it('captures the garbage line with its offset between valid lines', async () => {
     const proc = makeFakeProc();
-    const runner = new SubprocessRunner({ spawnFn: () => proc });
+    const runner = new SubprocessRunner({ spawnFn: (() => proc) as never });
     const promise = runner.run(baseInput);
     await emit(proc, [
       [validLine, '{not json 1', validLine].join('\n') + '\n',
@@ -87,7 +87,7 @@ describe('malformed-JSONL dead-letter capture (issue #2)', () => {
 
   it('advances the offset across blank lines without counting them as malformed', async () => {
     const proc = makeFakeProc();
-    const runner = new SubprocessRunner({ spawnFn: () => proc });
+    const runner = new SubprocessRunner({ spawnFn: (() => proc) as never });
     const promise = runner.run(baseInput);
     await emit(proc, [`${validLine}\n\n\n{bad\n`]);
     const result = await promise;
@@ -98,7 +98,7 @@ describe('malformed-JSONL dead-letter capture (issue #2)', () => {
 
   it('clips over-long garbage lines and records the whole-line offset', async () => {
     const proc = makeFakeProc();
-    const runner = new SubprocessRunner({ spawnFn: () => proc });
+    const runner = new SubprocessRunner({ spawnFn: (() => proc) as never });
     const garbage = 'x'.repeat(500);
     const promise = runner.run(baseInput);
     await emit(proc, [`{${garbage}\n`]);
@@ -113,7 +113,7 @@ describe('malformed-JSONL dead-letter capture (issue #2)', () => {
 
   it('caps the capture while still reporting the true drop count', async () => {
     const proc = makeFakeProc();
-    const runner = new SubprocessRunner({ spawnFn: () => proc });
+    const runner = new SubprocessRunner({ spawnFn: (() => proc) as never });
     const lines = Array.from({ length: 30 }, (_, i) => `{bad ${i}`).join('\n') + '\n';
     const promise = runner.run(baseInput);
     await emit(proc, [lines]);
@@ -130,7 +130,7 @@ describe('malformed-JSONL dead-letter capture (issue #2)', () => {
 
   it('leaves malformedOutput absent when nothing was dropped', async () => {
     const proc = makeFakeProc();
-    const runner = new SubprocessRunner({ spawnFn: () => proc });
+    const runner = new SubprocessRunner({ spawnFn: (() => proc) as never });
     const promise = runner.run(baseInput);
     await emit(proc, [`${validLine}\n`]);
     const result = await promise;
