@@ -291,7 +291,13 @@ describe('SubprocessRunner.run — fs cleanup on error paths', () => {
 
   it('still calls fs.rmSync(recursive, force) when the subprocess errors out (uncaught throw)', async () => {
     const fake = makeFakeProc();
-    const runner = new SubprocessRunner({ spawnFn: (() => fake.proc) as never });
+    // Spawn 'error' is a launch failure per issue #2 (retried with backoff
+    // by default); disable that here so the test exercises the error path
+    // exactly once.
+    const runner = new SubprocessRunner({
+      spawnFn: (() => fake.proc) as never,
+      launchRetryBaseMs: 0,
+    });
 
     fsMocks.rmSync.mockClear();
     const promise = runner.run({

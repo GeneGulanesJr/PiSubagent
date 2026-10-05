@@ -61,6 +61,9 @@ const RetryOnSchema = Type.Optional(
   ),
 );
 
+const CHAIN_FAILURE_THRESHOLD_DESCRIPTION =
+  'Chain mode circuit breaker (issue #2): stop the chain after this many consecutive failed steps. Default 1 = stop at the first failure (historical behavior). A tolerated failure continues with the last GOOD step output as {previous}; steps skipped by an open breaker are reported with stopReason "skipped_due_to_open_circuit" and details.circuitBreaker describes the trip.';
+
 const TaskItem = Type.Object({
   agent: Type.String({ description: 'Name of the agent to invoke' }),
   task: Type.String({ description: 'Task to delegate to the agent' }),
@@ -152,6 +155,9 @@ const SubagentParamsSchema = Type.Object({
   ),
   chain: Type.Optional(
     Type.Array(ChainItem, { description: 'Array of {agent, task} for sequential execution' }),
+  ),
+  chainFailureThreshold: Type.Optional(
+    Type.Number({ minimum: 1, maximum: 10, description: CHAIN_FAILURE_THRESHOLD_DESCRIPTION }),
   ),
   agentScope: Type.Optional(AgentScopeSchema),
   confirmProjectAgents: Type.Optional(

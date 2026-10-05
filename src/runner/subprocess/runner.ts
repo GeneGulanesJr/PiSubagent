@@ -15,6 +15,27 @@ import { resolveRunModel } from '../../tier.js';
 /** Hard cap on stdout line buffer / stderr accumulator per run (1 MB). */
 const MAX_BUFFER_BYTES = 1024 * 1024;
 
+/**
+ * Bounded dead-letter capture for malformed JSONL stdout lines (issue #2).
+ * Keeps WHAT dropped — not just how much — but the capture is capped and
+ * each line clipped, so a garbage fire can't OOM the parent (same
+ * discipline as the Bug 2 / Bug 7 stderr caps).
+ */
+const MAX_MALFORMED_CAPTURED = 20;
+const MAX_MALFORMED_LINE_CHARS = 200;
+
+/**
+ * Launch-phase retry (issue #2): a child that dies at spawn/launch — a
+ * spawn `error` event (ENOMEM, EAGAIN, …) or an instant non-zero exit with
+ * zero agent output — is retried with exponential backoff and jitter
+ * (base ×2 per attempt). A run that produced any `message_end` event, that
+ * lived past LAUNCH_FAILURE_WINDOW_MS, that was aborted or timed out, or
+ * that exited 0 is a real outcome and is never retried here (the outer
+ * runWithRetries still applies on top).
+ */
+const MAX_LAUNCH_RETRIES = 3;
+const LAUNCH_FAILURE_WINDOW_MS = 100;
+
 function emptyUsage(): UsageStats {
   return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0 };
 }
@@ -51,6 +72,11 @@ export interface SubprocessRunnerOptions {
    * fallback path.
    */
   spillFactory?: (agentName: string) => string | null;
+  /**
+   * Base backoff in ms for launch-phase retries (1s, 2s, 4s ×±20% jitter at
+   * the default). Tests inject a small value. 0 disables launch retrying.
+   */
+  launchRetryBaseMs?: number;
 }
 
 export class SubprocessRunner implements AgentRunner {
@@ -58,11 +84,13 @@ export class SubprocessRunner implements AgentRunner {
   private readonly spawnFn: typeof spawn;
   private readonly runTimeoutMs?: number;
   private readonly spillFactory: (agentName: string) => string | null;
+  private readonly launchRetryBaseMs: number;
 
   constructor(options: SubprocessRunnerOptions = {}) {
     this.spawnFn = options.spawnFn ?? spawn;
     this.runTimeoutMs = options.runTimeoutMs;
     this.spillFactory = options.spillFactory ?? createSpillFile;
+    this.launchRetryBaseMs = options.launchRetryBaseMs ?? 1_000;
   }
 
   /**
@@ -164,7 +192,9 @@ export class SubprocessRunner implements AgentRunner {
     let tmpPromptDir: string | null = null;
     let wasAborted = false;
     let didTimeOut = false;
-    let droppedJsonlCount = 0;
+    let malformedLineCount = 0;
+    let jsonlLineNo = 0;
+    const malformedOutput: string[] = [];
     let onUpdateErrorLogged = false;
     let spillPath: string | null = null;
 
@@ -199,178 +229,272 @@ export class SubprocessRunner implements AgentRunner {
       }
       args.push(`Task: ${input.resolvedTask ?? input.task}`);
 
+      let launchRetries = 0;
+
       const exitCode = await new Promise<number>((resolve) => {
-        const invocation = resolvePiInvocation(args);
-        const proc: ChildProcess = this.spawnFn(invocation.command, invocation.args, {
-          cwd: input.cwd,
-          shell: false,
-          stdio: ['ignore', 'pipe', 'pipe'],
-        });
+        // Per-attempt launch state, reset by attemptLaunch on each retry.
+        let spawnFailed = false;
+        let sawAgentOutput = false;
+        let startedAt = 0;
+        let attemptSettled = false;
 
-        let buffer = '';
-
-        const ingest = (msg: Message) => {
-          result.messages.push(msg);
-          if (msg.role === 'assistant') {
-            result.usage.turns += 1;
-            const usage = (
-              msg as unknown as { usage?: Partial<UsageStats & { totalTokens?: number }> }
-            ).usage;
-            if (usage) {
-              result.usage.input += usage.input || 0;
-              result.usage.output += usage.output || 0;
-              result.usage.cacheRead += usage.cacheRead || 0;
-              result.usage.cacheWrite += usage.cacheWrite || 0;
-              result.usage.cost += usage.cost || 0;
-              result.usage.contextTokens = usage.totalTokens ?? result.usage.contextTokens;
-            }
-            const meta = msg as unknown as {
-              model?: string;
-              stopReason?: string;
-              errorMessage?: string;
-            };
-            if (meta.model && !result.model) result.model = meta.model;
-            if (meta.stopReason) result.stopReason = meta.stopReason;
-            if (meta.errorMessage) result.errorMessage = meta.errorMessage;
-          }
-          // Bug 5: onUpdate callback exceptions must not crash dispatch.
-          // Log a one-time stderr note and keep going — sibling runs are
-          // isolated from this one's callback failures.
-          try {
-            onUpdate?.(result);
-          } catch (err) {
-            if (!onUpdateErrorLogged) {
-              onUpdateErrorLogged = true;
-              const msg2 = err instanceof Error ? err.message : String(err);
-              appendStderr(`[subprocess: onUpdate callback threw: ${msg2}]\n`);
-            }
-          }
-        };
-
-        const processLine = (line: string) => {
-          const trimmed = line.trim();
-          if (!trimmed) return;
-          let event: { type?: string; message?: unknown };
-          try {
-            event = JSON.parse(trimmed);
-          } catch {
-            // Bug 7: malformed lines are tallied for a single end-of-run
-            // summary; never log per-line (would itself be unbounded).
-            droppedJsonlCount++;
+        // Launch-retry decision point (issue #2), called when an attempt
+        // ends via close or error. Only genuine launch failures retry: a
+        // spawn `error` event, or a non-zero exit inside the launch window
+        // that produced zero agent output. Real output, success, aborts,
+        // and timeouts are final — the outer runWithRetries can still
+        // retry the failed result on top of whatever this returns.
+        const finishAttempt = (code: number) => {
+          const diedInLaunchWindow = Date.now() - startedAt < LAUNCH_FAILURE_WINDOW_MS;
+          const launchFailed = spawnFailed || (diedInLaunchWindow && !sawAgentOutput);
+          const eligible =
+            code !== 0 &&
+            launchFailed &&
+            !wasAborted &&
+            !didTimeOut &&
+            launchRetries < MAX_LAUNCH_RETRIES &&
+            !signal?.aborted &&
+            // launchRetryBaseMs 0 = launch retrying disabled (tests, and any
+            // caller that wants spawn errors to fail fast).
+            this.launchRetryBaseMs > 0;
+          if (!eligible) {
+            resolve(code);
             return;
           }
-          if (event.type === 'message_end' && event.message) {
-            ingest(event.message as Message);
-          }
+          launchRetries += 1;
+          // Exponential backoff (1s, 2s, 4s at the default base) with ±20%
+          // jitter so sibling dispatches don't retry in lockstep.
+          const jitter = 0.8 + Math.random() * 0.4;
+          const delay = Math.round(this.launchRetryBaseMs * 2 ** (launchRetries - 1) * jitter);
+          appendStderr(
+            `[subprocess: launch failure (retry ${launchRetries}/${MAX_LAUNCH_RETRIES}) — relaunching in ${delay}ms]\n`,
+          );
+          const t = setTimeout(() => {
+            if (signal?.aborted) {
+              // User cut it off between attempts — record intent, don't relaunch.
+              wasAborted = true;
+              resolve(code);
+              return;
+            }
+            attemptLaunch();
+          }, delay);
+          t.unref();
         };
 
-        if (proc.stdout) {
-          proc.stdout.on('data', (chunk: Buffer | string) => {
-            const text = chunk.toString();
-            // Spill active: raw bytes go to the artifact file; the
-            // in-memory buffer stays capped at MAX_BUFFER_BYTES.
-            if (spillPath !== null) {
-              try {
-                fs.appendFileSync(spillPath, text);
-              } catch {
-                /* best-effort: a failed spill append degrades to dropping */
+        const attemptLaunch = (): void => {
+          spawnFailed = false;
+          sawAgentOutput = false;
+          startedAt = Date.now();
+          attemptSettled = false;
+          const invocation = resolvePiInvocation(args);
+          const proc: ChildProcess = this.spawnFn(invocation.command, invocation.args, {
+            cwd: input.cwd,
+            shell: false,
+            stdio: ['ignore', 'pipe', 'pipe'],
+          });
+
+          let buffer = '';
+          let timeoutHandle: NodeJS.Timeout | undefined;
+
+          // One decision per attempt: a failed spawn can emit both 'error'
+          // and 'close' depending on the failure mode.
+          const settle = (code: number) => {
+            if (attemptSettled) return;
+            attemptSettled = true;
+            finishAttempt(code);
+          };
+
+          const ingest = (msg: Message) => {
+            result.messages.push(msg);
+            if (msg.role === 'assistant') {
+              result.usage.turns += 1;
+              const usage = (
+                msg as unknown as { usage?: Partial<UsageStats & { totalTokens?: number }> }
+              ).usage;
+              if (usage) {
+                result.usage.input += usage.input || 0;
+                result.usage.output += usage.output || 0;
+                result.usage.cacheRead += usage.cacheRead || 0;
+                result.usage.cacheWrite += usage.cacheWrite || 0;
+                result.usage.cost += usage.cost || 0;
+                result.usage.contextTokens = usage.totalTokens ?? result.usage.contextTokens;
+              }
+              const meta = msg as unknown as {
+                model?: string;
+                stopReason?: string;
+                errorMessage?: string;
+              };
+              if (meta.model && !result.model) result.model = meta.model;
+              if (meta.stopReason) result.stopReason = meta.stopReason;
+              if (meta.errorMessage) result.errorMessage = meta.errorMessage;
+            }
+            // Bug 5: onUpdate callback exceptions must not crash dispatch.
+            // Log a one-time stderr note and keep going — sibling runs are
+            // isolated from this one's callback failures.
+            try {
+              onUpdate?.(result);
+            } catch (err) {
+              if (!onUpdateErrorLogged) {
+                onUpdateErrorLogged = true;
+                const msg2 = err instanceof Error ? err.message : String(err);
+                appendStderr(`[subprocess: onUpdate callback threw: ${msg2}]\n`);
+              }
+            }
+          };
+
+          const processLine = (line: string) => {
+            jsonlLineNo++;
+            const trimmed = line.trim();
+            if (!trimmed) return;
+            let event: { type?: string; message?: unknown };
+            try {
+              event = JSON.parse(trimmed);
+            } catch {
+              // Bug 7 + issue #2: tally every drop for the single end-of-run
+              // summary, and capture (bounded, with the 1-based line offset)
+              // the first offenders so the misbehaving child can be diagnosed
+              // from result.malformedOutput alone.
+              malformedLineCount++;
+              if (malformedOutput.length < MAX_MALFORMED_CAPTURED) {
+                const clipped =
+                  trimmed.length > MAX_MALFORMED_LINE_CHARS
+                    ? `${trimmed.slice(0, MAX_MALFORMED_LINE_CHARS)}…`
+                    : trimmed;
+                malformedOutput.push(`line ${jsonlLineNo}: ${clipped}`);
               }
               return;
             }
-            // Bug 2 / ADR-0002: once the line buffer exceeds the cap, stop
-            // growing it and stop splitting/processing new stdout. The
-            // overflow is spilled to a tmpdir artifact (when creatable) so
-            // the full output is never silently lost; otherwise fall back
-            // to plain truncation with a one-time stderr marker.
-            if (buffer.length > MAX_BUFFER_BYTES) {
-              spillPath = this.spillFactory(input.agent.name);
+            if (event.type === 'message_end' && event.message) {
+              // Any agent output means the launch itself succeeded — this
+              // attempt can no longer be launch-retried.
+              sawAgentOutput = true;
+              ingest(event.message as Message);
+            }
+          };
+
+          if (proc.stdout) {
+            proc.stdout.on('data', (chunk: Buffer | string) => {
+              const text = chunk.toString();
+              // Spill active: raw bytes go to the artifact file; the
+              // in-memory buffer stays capped at MAX_BUFFER_BYTES.
               if (spillPath !== null) {
-                result.outputFile = spillPath;
-                try {
-                  fs.appendFileSync(spillPath, buffer);
-                } catch {
-                  /* ignore */
-                }
-                // The crossing chunk itself must not be lost either.
                 try {
                   fs.appendFileSync(spillPath, text);
                 } catch {
-                  /* ignore */
+                  /* best-effort: a failed spill append degrades to dropping */
                 }
-                appendStderr(`[truncated: stdout exceeded 1MB — full output: ${spillPath}]\n`);
-              } else {
-                appendStderr(`[truncated: stdout exceeded 1MB]\n`);
+                return;
               }
-              buffer = '';
-              return;
-            }
-            buffer += text;
-            const lines = buffer.split('\n');
-            buffer = lines.pop() ?? '';
-            for (const line of lines) processLine(line);
+              // Bug 2 / ADR-0002: once the line buffer exceeds the cap, stop
+              // growing it and stop splitting/processing new stdout. The
+              // overflow is spilled to a tmpdir artifact (when creatable) so
+              // the full output is never silently lost; otherwise fall back
+              // to plain truncation with a one-time stderr marker.
+              if (buffer.length > MAX_BUFFER_BYTES) {
+                spillPath = this.spillFactory(input.agent.name);
+                if (spillPath !== null) {
+                  result.outputFile = spillPath;
+                  try {
+                    fs.appendFileSync(spillPath, buffer);
+                  } catch {
+                    /* ignore */
+                  }
+                  // The crossing chunk itself must not be lost either.
+                  try {
+                    fs.appendFileSync(spillPath, text);
+                  } catch {
+                    /* ignore */
+                  }
+                  appendStderr(`[truncated: stdout exceeded 1MB — full output: ${spillPath}]\n`);
+                } else {
+                  appendStderr(`[truncated: stdout exceeded 1MB]\n`);
+                }
+                buffer = '';
+                return;
+              }
+              buffer += text;
+              const lines = buffer.split('\n');
+              buffer = lines.pop() ?? '';
+              for (const line of lines) processLine(line);
+            });
+          }
+          if (proc.stderr) {
+            proc.stderr.on('data', (chunk: Buffer | string) => {
+              // Bug 2: cap stderr growth at MAX_BUFFER_BYTES; drop new
+              // bytes (don't grow) once we're past the threshold.
+              appendStderr(chunk.toString());
+            });
+          }
+
+          proc.on('close', (code) => {
+            if (timeoutHandle) clearTimeout(timeoutHandle);
+            if (buffer.trim()) processLine(buffer);
+            settle(code ?? 0);
           });
-        }
-        if (proc.stderr) {
-          proc.stderr.on('data', (chunk: Buffer | string) => {
-            // Bug 2: cap stderr growth at MAX_BUFFER_BYTES; drop new
-            // bytes (don't grow) once we're past the threshold.
-            appendStderr(chunk.toString());
+          proc.on('error', () => {
+            if (timeoutHandle) clearTimeout(timeoutHandle);
+            spawnFailed = true;
+            settle(1);
           });
-        }
 
-        proc.on('close', (code) => {
-          if (timeoutHandle) clearTimeout(timeoutHandle);
-          if (buffer.trim()) processLine(buffer);
-          resolve(code ?? 0);
-        });
-        proc.on('error', () => {
-          if (timeoutHandle) clearTimeout(timeoutHandle);
-          resolve(1);
-        });
+          if (signal) {
+            const onAbort = () => {
+              wasAborted = true;
+              proc.kill('SIGTERM');
+              const sigkill = setTimeout(() => {
+                if (proc.exitCode === null && !proc.killed) proc.kill('SIGKILL');
+              }, 5000);
+              sigkill.unref();
+            };
+            if (signal.aborted) onAbort();
+            else signal.addEventListener('abort', onAbort, { once: true });
+          }
 
-        if (signal) {
-          const onAbort = () => {
-            wasAborted = true;
-            proc.kill('SIGTERM');
-            const sigkill = setTimeout(() => {
-              if (proc.exitCode === null && !proc.killed) proc.kill('SIGKILL');
-            }, 5000);
-            sigkill.unref();
-          };
-          if (signal.aborted) onAbort();
-          else signal.addEventListener('abort', onAbort, { once: true });
-        }
+          // Per-dispatch timeout beats the runner-level default. On expiry:
+          // SIGTERM now, SIGKILL after 5s grace (unref'd), and the result gets
+          // `stopReason: 'timeout'` plus `timedOut: true` — unless the user
+          // also aborts, in which case `wasAborted` wins the stopReason (user
+          // intent) while `timedOut` stays set for the record.
+          const requested = input.timeoutMs ?? this.runTimeoutMs;
+          // Defensive floor: a non-positive timeout must not silently disable
+          // the kill switch (the schema enforces min 1000, but direct callers
+          // of run() can bypass it).
+          const effectiveTimeoutMs = requested !== undefined ? Math.max(requested, 1) : undefined;
+          if (effectiveTimeoutMs !== undefined && effectiveTimeoutMs > 0) {
+            timeoutHandle = setTimeout(() => {
+              didTimeOut = true;
+              proc.kill('SIGTERM');
+              const sigkill = setTimeout(() => {
+                if (proc.exitCode === null && !proc.killed) proc.kill('SIGKILL');
+              }, 5000);
+              sigkill.unref();
+              result.stopReason = 'timeout';
+              result.errorMessage = `run timeout after ${effectiveTimeoutMs}ms`;
+            }, effectiveTimeoutMs);
+            timeoutHandle.unref();
+          }
+        };
 
-        // Per-dispatch timeout beats the runner-level default. On expiry:
-        // SIGTERM now, SIGKILL after 5s grace (unref'd), and the result gets
-        // `stopReason: 'timeout'` plus `timedOut: true` — unless the user
-        // also aborts, in which case `wasAborted` wins the stopReason (user
-        // intent) while `timedOut` stays set for the record.
-        const requested = input.timeoutMs ?? this.runTimeoutMs;
-        // Defensive floor: a non-positive timeout must not silently disable
-        // the kill switch (the schema enforces min 1000, but direct callers
-        // of run() can bypass it).
-        const effectiveTimeoutMs = requested !== undefined ? Math.max(requested, 1) : undefined;
-        let timeoutHandle: NodeJS.Timeout | undefined;
-        if (effectiveTimeoutMs !== undefined && effectiveTimeoutMs > 0) {
-          timeoutHandle = setTimeout(() => {
-            didTimeOut = true;
-            proc.kill('SIGTERM');
-            const sigkill = setTimeout(() => {
-              if (proc.exitCode === null && !proc.killed) proc.kill('SIGKILL');
-            }, 5000);
-            sigkill.unref();
-            result.stopReason = 'timeout';
-            result.errorMessage = `run timeout after ${effectiveTimeoutMs}ms`;
-          }, effectiveTimeoutMs);
-          timeoutHandle.unref();
-        }
+        attemptLaunch();
       });
+
+      // Issue #2: report launch-phase retries so callers can tell a flaky
+      // launch from a clean run.
+      if (launchRetries > 0) {
+        result.launchRetries = launchRetries;
+        appendStderr(`[subprocess: recovered after ${launchRetries} launch retry(ies)]\n`);
+      }
 
       // Bug 7: surface malformed-JSONL drops as a single stderr line so
       // operators can spot a misbehaving child without filling memory.
-      if (droppedJsonlCount > 0) {
-        appendStderr(`[subprocess: ${droppedJsonlCount} malformed JSONL lines dropped]\n`);
+      // Issue #2: attach the bounded dead-letter capture to the result too.
+      if (malformedLineCount > 0) {
+        result.malformedOutput = malformedOutput;
+        appendStderr(`[subprocess: ${malformedLineCount} malformed JSONL lines dropped]\n`);
+        const captured = malformedOutput.map((l) => l.replace(/\n/g, '\\n')).join(' | ');
+        appendStderr(
+          `[subprocess: malformed capture (first ${malformedOutput.length} of ${malformedLineCount}): ${captured}]\n`,
+        );
       }
 
       result.exitCode = exitCode;
