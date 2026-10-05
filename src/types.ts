@@ -65,6 +65,12 @@ export interface SubagentParams {
   agentScope?: 'user' | 'project' | 'both';
   confirmProjectAgents?: boolean;
   cwd?: string;
+  /**
+   * Chain mode circuit breaker (issue #2): stop after this many consecutive
+   * failed steps. Default 1 = stop at the first failure. A tolerated failure
+   * continues with the last GOOD step output as {previous}.
+   */
+  chainFailureThreshold?: number;
 }
 
 export type Mode = 'single' | 'parallel' | 'chain';
@@ -134,6 +140,20 @@ export interface SubagentDetails {
   usage?: UsageStats;
   /** Bundled-shadow sync outcomes for this dispatch (see src/agent-sync.ts). */
   agentSyncNotes?: string[];
+  /**
+   * Chain mode: present when the consecutive-failure circuit breaker tripped
+   * and remaining steps were skipped (issue #2).
+   */
+  circuitBreaker?: {
+    /** Configured threshold that was exceeded. */
+    threshold: number;
+    /** Consecutive failures at trip time. */
+    consecutiveFailures: number;
+    /** 1-based index of the step whose failure opened the breaker. */
+    stoppedAtStep: number;
+    /** How many untouched steps were reported skipped. */
+    skippedSteps: number;
+  };
 }
 
 /** What a subagent_save call did (see src/agent-store.ts). */

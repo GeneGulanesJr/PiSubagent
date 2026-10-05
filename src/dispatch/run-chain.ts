@@ -6,7 +6,7 @@ import {
 } from '../output.js';
 import { applyStructured, withStructuredInstruction } from '../structured.js';
 import type { AgentRunner } from '../runner/runner.js';
-import type { SubagentParams, AgentConfig, SingleResult } from '../types.js';
+import type { SubagentParams, AgentConfig, SingleResult, SubagentDetails } from '../types.js';
 import { PER_TASK_OUTPUT_CAP } from './limits.js';
 import { baseDetails, parentDefaults, runWithRetries, stubResult, sumUsage } from './internal.js';
 import { createProgressEmitter, snapshot } from './progress.js';
@@ -21,9 +21,15 @@ export async function runChain(
 ): Promise<ToolResultLike> {
   const steps = params.chain!;
   const base = baseDetails('chain', params, null);
+  // Circuit breaker (issue #2): stop after N consecutive failed steps.
+  // Default 1 = stop at the first failure (historical behavior). A
+  // tolerated failure never feeds {previous} — the next step continues
+  // from the last GOOD step's output.
+  const breakerThreshold = Math.max(1, params.chainFailureThreshold ?? 1);
   const results: SingleResult[] = [];
   const emit = createProgressEmitter(ctx.onUpdate, ctx.progressIntervalMs);
   let previousOutput = '';
+  let consecutiveFailures = 0;
 
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i];
@@ -64,17 +70,49 @@ export async function runChain(
     emit?.(snapshot('chain', base, results, steps.length));
 
     if (isFailedResult(result)) {
+      consecutiveFailures += 1;
+      if (consecutiveFailures < breakerThreshold) {
+        // Tolerated: keep the last good output and continue.
+        continue;
+      }
+      // Breaker open: report every untouched step as skipped instead of
+      // letting them silently vanish from details.results.
+      for (let j = i + 1; j < steps.length; j++) {
+        results.push({
+          ...stubResult(lookup(steps[j].agent), steps[j].task),
+          running: false,
+          stopReason: 'skipped_due_to_open_circuit',
+        });
+      }
+      emit?.(snapshot('chain', base, results, steps.length));
+      const skippedSteps = steps.length - i - 1;
+      const details: SubagentDetails = {
+        ...base,
+        results,
+        usage: sumUsage(results),
+        circuitBreaker: {
+          threshold: breakerThreshold,
+          consecutiveFailures,
+          stoppedAtStep: i + 1,
+          skippedSteps,
+        },
+      };
       return {
         content: [
           {
             type: 'text',
-            text: `Chain stopped at step ${i + 1} (${step.agent}): ${getResultOutput(result)}`,
+            text:
+              `Chain stopped at step ${i + 1} (${step.agent}) after ${consecutiveFailures} consecutive failure(s): ${getResultOutput(result)}` +
+              (skippedSteps > 0
+                ? `. Remaining ${skippedSteps} step(s) skipped_due_to_open_circuit.`
+                : '.'),
           },
         ],
-        details: { ...base, results, usage: sumUsage(results) },
+        details,
         isError: true,
       };
     }
+    consecutiveFailures = 0;
     previousOutput = truncateParallelOutput(getFinalOutput(result.messages), PER_TASK_OUTPUT_CAP);
   }
 

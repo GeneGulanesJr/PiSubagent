@@ -166,7 +166,9 @@ describe('dispatch retries pass-through', () => {
     );
     expect(out.isError).toBe(true);
     expect(JSON.stringify(out)).toContain('Chain stopped at step 1');
-    expect(out.details.results).toHaveLength(1);
+    // Issue #2: untouched steps are reported, not silently dropped.
+    expect(out.details.results).toHaveLength(2);
+    expect(out.details.results[1].stopReason).toBe('skipped_due_to_open_circuit');
     expect(calls).toHaveLength(2);
   });
 

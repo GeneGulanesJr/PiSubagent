@@ -114,7 +114,9 @@ describe('runChain short-circuits on step failure', () => {
     expect(text).toContain('a');
     expect(text).toContain('step 1 blew up');
     expect(out.details.mode).toBe('chain');
-    expect(out.details.results).toHaveLength(1);
+    // Issue #2: untouched steps are reported as skipped, not silently dropped.
+    expect(out.details.results).toHaveLength(2);
+    expect(out.details.results[1].stopReason).toBe('skipped_due_to_open_circuit');
   });
 
   it('stops at step N (not step 1) when an early step fails', async () => {
@@ -147,7 +149,9 @@ describe('runChain short-circuits on step failure', () => {
     expect(stepIndex).toBe(3); // step 4 never invoked
     const text = out.content[0].type === 'text' ? out.content[0].text : '';
     expect(text).toContain('Chain stopped at step 3');
-    expect(out.details.results).toHaveLength(3);
+    // Issue #2: step 4 shows up as skipped_due_to_open_circuit.
+    expect(out.details.results).toHaveLength(4);
+    expect(out.details.results[3].stopReason).toBe('skipped_due_to_open_circuit');
   });
 });
 
