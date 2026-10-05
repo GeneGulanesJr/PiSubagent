@@ -22,3 +22,13 @@ export const MAX_CONCURRENCY = 4;
  * is capped.
  */
 export const PER_TASK_OUTPUT_CAP = 50 * 1024;
+
+/**
+ * Soft delegation-policy threshold (ADR-0006, docs/delegation-policy.md).
+ * Parallel dispatches with more than this many tasks are still allowed (up to
+ * MAX_PARALLEL_TASKS) but runParallel appends a one-line, non-blocking policy
+ * note to the parent-facing text, nudging toward the "prefer 0–1 subagents"
+ * guideline. Guidance, not a cap — it never rejects a dispatch or flips
+ * isError.
+ */
+export const POLICY_PARALLEL_WARN = 2;

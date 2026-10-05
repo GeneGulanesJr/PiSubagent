@@ -15,7 +15,7 @@ agents (`scout`, `planner`, `reviewer`, `debugger`, `test-writer`, `librarian`,
 `aws-architect`, `worker`, plus an audit/optimization suite: `senior-reviewer`,
 `bug-hunter`, `deep-auditor`, `security-auditor`, `readiness-reviewer`,
 `deps-auditor`, `perf-optimizer`, `database-optimizer`, `ai-cleanup`,
-`code-explainer`, `test-generator`). Subagents are resolved from
+`code-explainer`, `test-generator`, `perf-benchmarker`). Subagents are resolved from
 project-local `.pi/agents/`, user-level `~/.pi/agent/agents/`, and the
 bundled defaults, with a one-time confirmation prompt before untrusted
 project agents run.
@@ -68,6 +68,24 @@ Any dispatch (or item) also accepts runtime knobs:
   are ephemeral (`--no-session`).
 - `sessionDir` — session storage directory override (child `--session-dir`).
 
+### When to delegate
+
+Subagents buy context isolation and parallelism, not automatic quality. Spawn
+one only for **clear net benefit** — a bounded task whose result is much
+smaller than the context the work would need:
+
+- **Good fits** — repo exploration, independent research, profiling, security
+  or dependency review, finding usages/dependencies, independent code review,
+  writing/validating tests for already-defined behavior.
+- **Poor fits** — small edits, simple bug fixes, straightforward refactors,
+  anything needing continuous knowledge of the current implementation.
+
+Default: **main agent first**; prefer 0–1 subagents and reserve parallel
+fan-out for genuinely independent work. "Spawn subagents if needed" from the
+user is permission, not a requirement. Full policy:
+[docs/delegation-policy.md](docs/delegation-policy.md) (ADR-0006), also
+bundled as the `subagent-delegation` skill.
+
 ## Modes
 
 | Mode     | Shape              | When to use                                                         | Concurrency                                                     |
@@ -91,6 +109,11 @@ plan. Reach for it before opening an issue.
 - `MAX_PARALLEL_TASKS = 8` — `tasks[]` length must be ≤ 8.
 - `MAX_CONCURRENCY = 4` — parallel dispatch runs as a sliding window; at most
   4 spawns are in flight at any moment.
+- `POLICY_PARALLEL_WARN = 2` — soft delegation-policy guideline, not a cap.
+  Parallel dispatches with more than 2 tasks are allowed (up to
+  `MAX_PARALLEL_TASKS`) but the result text carries a one-line policy note
+  nudging toward "prefer 0–1 subagents" — see
+  [docs/delegation-policy.md](docs/delegation-policy.md).
 - **Per-provider concurrency caps** — provider plans limit concurrent requests
   per account, so parallel dispatch also enforces a per-provider slot count on
   top of the total window. Built-in caps: **z.ai → 2, MiniMax → 3**; a run's
@@ -135,6 +158,7 @@ plan. Reach for it before opening an issue.
 - `ai-cleanup` — cleans up AI-introduced problems (over-engineering, dead code, duplication)
 - `code-explainer` (read-only) — "how does this work" walkthrough before touching code
 - `test-generator` — gap-driven test generation for under-tested areas
+- `perf-benchmarker` — reproducible performance baseline: measures real workloads, persists a machine-readable baseline artifact, ranks bottlenecks; never optimizes
 
 Override by dropping a same-named `*.md` in `~/.pi/agent/agents/` (or save
 one with the `subagent_save` tool — see below; the tool path asks for a

@@ -335,20 +335,28 @@ describe('SubprocessRunner.run hardening', () => {
       // above + runner's 'on' ⇒ count 2). Each poll hops a macrotask
       // (setImmediate), giving the stream machinery time to drain the
       // chunks pushed above — delivering close on the microtask queue
-      // would resolve the run before any 'data' event fires. Unlike the
-      // old silent give-up-after-200-ticks poll, running dry now rejects
-      // (fast, clear failure instead of a 60s hang), and the final
-      // emission is sticky (emitCloseSticky) so close can never land
-      // before a listener exists — the race seen on slow CI filesystems
-      // (ubuntu/node22) when a real-fs await delays spawn.
-      let attempts = 0;
+      // would resolve the run before any 'data' event fires. The budget
+      // is a wall-clock deadline, NOT a hop count: setImmediate hops are
+      // nearly free, so the previous 200-hop cap expired within a few ms
+      // — less than one slow syscall on CI (ubuntu/node22 + v8 coverage)
+      // where the runner's path to spawn crosses real awaits the fs
+      // mocks don't cover (withFileMutationQueue inside writePromptFile),
+      // producing spurious "spawn did not happen" rejections. 2000ms
+      // still fails well before vitest's 5s default test timeout, and
+      // the final emission is sticky (emitCloseSticky) so close can
+      // never land before a listener exists.
+      const deadlineMs = Date.now() + 2000;
       const waitForListener = () => {
-        if (++attempts > 200) {
-          reject(new Error('runner never subscribed to close — spawn did not happen?'));
-          return;
-        }
         if (proc.listenerCount('close') >= 2) {
           emitCloseSticky(proc, closeCode);
+        } else if (Date.now() > deadlineMs) {
+          reject(
+            new Error(
+              `runner never subscribed to close within 2000ms ` +
+                `(close listeners: ${proc.listenerCount('close')}) — ` +
+                `spawn did not happen, or a real-fs await stalled the runner`,
+            ),
+          );
         } else {
           setImmediate(waitForListener);
         }
