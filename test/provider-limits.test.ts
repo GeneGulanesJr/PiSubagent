@@ -13,7 +13,7 @@ import {
 describe('providerOfModel', () => {
   it('extracts the lowercased provider prefix', () => {
     expect(providerOfModel('zai/glm-5.3-flash')).toBe('zai');
-    expect(providerOfModel('  minimax/minimax-m2.5 ')).toBe('minimax');
+    expect(providerOfModel('  minimax/MiniMax-M3.1-Flash ')).toBe('minimax');
     expect(providerOfModel('ZAI/glm')).toBe('zai');
   });
 

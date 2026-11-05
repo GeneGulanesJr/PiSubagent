@@ -4,6 +4,8 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['test/**/*.test.ts'],
+    // Hermetic: never read the developer's real ~/.pi/agent config.
+    setupFiles: ['test/helpers/isolate-agent-dir.ts'],
     // Cold ESM import of src/index.ts (with its peer-dep chain) exceeds
     // vitest's default 10s hook timeout on Windows when collected in
     // parallel with the rest of the suite. Raise the limit so the

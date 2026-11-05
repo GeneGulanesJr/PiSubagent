@@ -194,7 +194,7 @@ const SaveAgentParamsSchema = Type.Object({
   model: Type.Optional(
     Type.String({
       description:
-        'Provider/model id pin (e.g. minimax/minimax-m2.5). Wins over tier at dispatch — set one, not both.',
+        'Provider/model id pin (e.g. minimax/MiniMax-M3.1-Flash). Wins over tier at dispatch — set one, not both.',
     }),
   ),
   tier: Type.Optional(
@@ -315,8 +315,11 @@ export default function (pi: ExtensionAPI, deps: SubagentExtensionDeps = {}) {
       'Optional thinkingLevel (off…max) per dispatch or per task scales reasoning effort;',
       'omit for the role default.',
       "Optional tier ('cheap' | 'thinking') routes the run to an offload model",
-      '(defaults: MiniMax M2.5 / M3 — overridable in ~/.pi/agent/pisubagent.tiers.json)',
+      '(defaults: MiniMax M3.1 Flash / M3 — overridable in ~/.pi/agent/pisubagent.tiers.json)',
       'to preserve the primary provider quota; tier-routed runs fall back to the parent model once on failure.',
+      "Use tier 'cheap' (MiniMax M3.1 Flash) only for work with an automated check: verifiable bug fixes, renames/refactors, docs, tool-heavy exploration, repetitive jobs;",
+      'never for code/security review, web research, hard debugging or architecture, or timing/state-heavy logic. Verify its output; escalate to a stronger model after two failed verifications.',
+      'GLM-5.3 Flash (zai/glm-5.3-flash) suits high-volume agentic coding, multi-step tool use and UI/screenshot work; not for hard reasoning, final security review or factual recall, and never for sensitive/customer data (first-party API: no DPA, PRC law).',
       'Delegation policy: spawn only for clear net benefit — context isolation, genuinely independent parallel work, or a large investigation whose findings collapse to a concise result.',
       'Good fits: repo exploration, research, profiling, security/dependency review, finding usages, independent code review or tests for defined behavior.',
       'Poor fits: small edits, simple bug fixes, straightforward refactors, tasks needing continuous parent context. If uncertain, do the work yourself;',
