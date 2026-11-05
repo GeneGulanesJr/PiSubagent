@@ -7,8 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **MiniMax M2.5 deprecated** — the built-in `cheap` tier now resolves to
+  `minimax/MiniMax-M3.1-Flash` (override unchanged via
+  `~/.pi/agent/pisubagent.tiers.json`).
+- `librarian` (web research) moved off the `cheap` MiniMax tier to
+  `zai/glm-5.3-flash`: M3.1 Flash is unreliable for web research and factual
+  lookups.
+- Tests are hermetic: vitest points `PI_CODING_AGENT_DIR` at a temp dir so a
+  developer's real `~/.pi/agent` config (tiers, limits, agents) can no longer
+  change results.
+
 ### Added
 
+- Delegation guidance for MiniMax M3.1 Flash and GLM-5.3 Flash
+  (`docs/delegation-policy.md`, the `subagent-delegation` skill, the
+  `subagent` tool description).
 - **Per-provider concurrency caps** (ADR-0005) — parallel dispatch enforces a
   per-provider slot count on top of `MAX_CONCURRENCY`, matching provider plan
   limits on concurrent requests. Built-in caps: `zai: 2`, `minimax: 3`; a

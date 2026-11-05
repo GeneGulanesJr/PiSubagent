@@ -2,7 +2,7 @@
 name: librarian
 description: Web/library research — fetches docs, summarizes API surface, returns citations
 tools: read, web_search, web_research, browser_fetch
-tier: cheap
+model: zai/glm-5.3-flash
 thinkingLevel: low
 ---
 

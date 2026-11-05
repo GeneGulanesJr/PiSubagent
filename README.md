@@ -144,7 +144,7 @@ plan. Reach for it before opening an issue.
 - `reviewer` (GLM-5.3-Flash, thinking `high`) — code review
 - `debugger` (GLM-5.3-Flash) — diagnose failures, propose minimal fix
 - `test-writer` (GLM-5.3-Flash) — focused unit tests
-- `librarian` (tier `cheap`, thinking `low`, web tools) — research and docs lookup with citations
+- `librarian` (GLM-5.3-Flash, thinking `low`, web tools) — research and docs lookup with citations
 - `aws-architect` (GLM-5.3-Flash) — AWS Well-Architected review of IaC
 - `worker` (GLM-5.3-Flash) — general implementation
 - `senior-reviewer` (thinking `high`, read-only) — pre-merge review of the current diff with a blocking-issues verdict
@@ -255,7 +255,7 @@ Non-crucial work can be routed to a cheaper provider model so the primary
 provider's quota (e.g. z.ai's 5-hour window) is spent where it matters:
 
 - **`cheap`** — routine work (recon, lookup, bulk triage). Default model:
-  `minimax/minimax-m2.5`.
+  `minimax/MiniMax-M3.1-Flash` (replaces the deprecated `minimax-m2.5`).
 - **`thinking`** — deep reasoning that can still be offloaded. Default model:
   `minimax/minimax-m3`.
 
@@ -265,10 +265,17 @@ Tier-routed runs get the tier's thinking default and **fall back to the
 parent model once on failure** (quota exhausted, provider error) — offload
 is best-effort, never dispatch-fatal. Explicit `model:` pins never fall back.
 
+Which work suits the `cheap` MiniMax tier (and what it must never be given —
+review, web research, hard debugging): see
+[When to delegate to MiniMax M3.1 Flash](docs/delegation-policy.md#when-to-delegate-to-minimax-m31-flash).
+For the GLM-5.3 Flash agents (and what to keep away from them — final security
+review, sensitive data): see
+[When to delegate to GLM-5.3 Flash](docs/delegation-policy.md#when-to-delegate-to-glm-53-flash).
+
 Override the tier → model mapping in `~/.pi/agent/pisubagent.tiers.json`:
 
 ```json
-{ "cheap": "minimax/minimax-m2.5", "thinking": "minimax/minimax-m3" }
+{ "cheap": "minimax/MiniMax-M3.1-Flash", "thinking": "minimax/minimax-m3" }
 ```
 
 Override precedence (most-specific wins): **project > user > bundled**.

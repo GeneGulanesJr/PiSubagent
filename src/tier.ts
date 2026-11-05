@@ -19,13 +19,13 @@ import type { ThinkingLevel } from '@earendil-works/pi-agent-core';
  *   5. undefined — inherit the parent's model (existing default).
  *
  * Tiers:
- *   - "cheap"    → routine work (recon, lookup, bulk triage). MiniMax M2.5.
+ *   - "cheap"    → routine work (recon, lookup, bulk triage). MiniMax M3.1 Flash (M2.5 is deprecated).
  *   - "thinking" → deep reasoning that can still be offloaded. MiniMax M3
  *                  (MiniMax's reasoning-capable flagship). Reserved for
  *                  thinking-mode work per owner decision — never the default.
  *
  * Tier → model mapping is overridable via ~/.pi/agent/pisubagent.tiers.json:
- *   { "cheap": "minimax/minimax-m2.5", "thinking": "minimax/minimax-m3" }
+ *   { "cheap": "minimax/MiniMax-M3.1-Flash", "thinking": "minimax/minimax-m3" }
  * Invalid or missing entries fall back to the built-in defaults.
  */
 
@@ -34,7 +34,7 @@ export type Tier = (typeof TIERS)[number];
 
 /** Built-in tier → model mapping (provider/model id passed to child pi as --model). */
 export const DEFAULT_TIER_MODELS: Record<Tier, string> = {
-  cheap: 'minimax/minimax-m2.5',
+  cheap: 'minimax/MiniMax-M3.1-Flash',
   thinking: 'minimax/minimax-m3',
 };
 
